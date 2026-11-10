@@ -1,0 +1,78 @@
+import {
+  Injectable,
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  NotFoundException,
+  Inject,
+} from '@nestjs/common';
+import { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { eq, and } from 'drizzle-orm';
+import { DRIZZLE_PROVIDER } from '../../database/database.service';
+import * as schema from '../../database/schema';
+
+@Injectable()
+export class ProjectMemberGuard implements CanActivate {
+  constructor(
+    @Inject(DRIZZLE_PROVIDER) private readonly db: NodePgDatabase<typeof schema>,
+  ) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest();
+    const user = request.user;
+
+    if (!user) {
+      throw new ForbiddenException('User context not found');
+    }
+
+    // Admins have organization-wide access
+    if (user.role === 'admin') {
+      return true;
+    }
+
+    let projectId = request.params.projectId || request.body.projectId || request.query.projectId;
+
+    // If param is 'id' on a project route:
+    const routePath = request.route?.path || '';
+    if (!projectId && routePath.includes('projects') && request.params.id) {
+      projectId = request.params.id;
+    }
+
+    // If param is 'id' or 'taskId' on a task route, lookup task's project
+    const taskId = request.params.taskId || (routePath.includes('tasks') ? request.params.id : null);
+    if (!projectId && taskId) {
+      const [task] = await this.db
+        .select({ projectId: schema.tasks.projectId })
+        .from(schema.tasks)
+        .where(eq(schema.tasks.id, taskId))
+        .limit(1);
+
+      if (!task) {
+        throw new NotFoundException(`Task with ID ${taskId} not found`);
+      }
+      projectId = task.projectId;
+    }
+
+    if (!projectId) {
+      return true;
+    }
+
+    // Check project membership in database
+    const [membership] = await this.db
+      .select({ id: schema.projectMembers.id })
+      .from(schema.projectMembers)
+      .where(
+        and(
+          eq(schema.projectMembers.projectId, projectId),
+          eq(schema.projectMembers.userId, user.id),
+        ),
+      )
+      .limit(1);
+
+    if (!membership) {
+      throw new ForbiddenException('Access denied. You are not a member of this project.');
+    }
+
+    return true;
+  }
+}

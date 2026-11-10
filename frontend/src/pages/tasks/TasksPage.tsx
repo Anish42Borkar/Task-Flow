@@ -1,120 +1,174 @@
-/**
- * ============================================================================
- * MANDATORY HAND-CODED COMPONENT: Main Task List UI & Drag-and-Drop Ordering
- * ============================================================================
- * INSTRUCTIONS FOR USER IMPLEMENTATION:
- * The assignment specification strictly requires that the Main Task List UI
- * and Drag-and-Drop functionality be implemented by hand.
- *
- * SPECIFICATION & REQUIREMENTS:
- * 1. Screen Visuals: Reference `Admin/a_clean_minimal_saas_ui_screen_for_tasks_in_t.png`
- * 2. Status Tabs: All, To Do (Pending), In Progress, Completed
- * 3. Project Filter: Dropdown allowing filtering tasks by project
- * 4. Task Table Columns:
- *    - Checkbox
- *    - Task Title
- *    - Project Name
- *    - Status (Pending, In Progress, Completed badge)
- *    - Due Date (with calendar icon)
- *    - Actions (Edit pencil, Delete trash for Admin)
- * 5. Drag-and-Drop Reordering:
- *    - Users can grab and drag task rows to change their position
- *    - On drop: Save new order via `PATCH /api/projects/:projectId/tasks/reorder`
- *    - Persist the order in PostgreSQL database so it stays after page refresh!
- * ============================================================================
- */
-
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
-  CheckSquare,
   Search,
   Plus,
   Edit2,
   Trash2,
   Calendar,
   GripVertical,
+  CheckCircle2,
+  Clock,
+  AlertCircle,
+  Loader2,
+  Filter,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
+import { useNotificationStore } from '../../stores/notificationStore';
 import { Task, TaskStatus } from '../../types';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
 import { Input } from '../../components/common/Input';
+import { api } from '../../services/api';
+import { getSocket, joinProjectRoom, leaveProjectRoom } from '../../services/socket';
 
-const INITIAL_TASKS: Task[] = [
-  {
-    id: 't1',
-    title: 'Update project documentation',
-    description: 'Update project documentation with latest changes and deployment steps.',
-    projectId: 'p3',
-    projectName: 'Website Redesign',
-    status: 'In Progress',
-    orderIndex: 1,
-    dueDate: 'Nov 30, 2026',
-    createdAt: '2026-11-01',
-  },
-  {
-    id: 't2',
-    title: 'Fix login issue',
-    description: 'Fix authentication token expiry and redirect loop on mobile.',
-    projectId: 'p4',
-    projectName: 'Mobile App',
-    status: 'In Progress',
-    orderIndex: 2,
-    dueDate: 'Dec 15, 2026',
-    createdAt: '2026-11-02',
-  },
-  {
-    id: 't3',
-    title: 'Review pull request',
-    description: 'Review PR #42 for database schema migration and indexes.',
-    projectId: 'p1',
-    projectName: 'API Integration',
-    status: 'Pending',
-    orderIndex: 3,
-    dueDate: 'Dec 18, 2026',
-    createdAt: '2026-11-03',
-  },
-  {
-    id: 't4',
-    title: 'Prepare release notes',
-    description: 'Summarize changelog and breaking changes for v1.0 release.',
-    projectId: 'p4',
-    projectName: 'Mobile App',
-    status: 'Pending',
-    orderIndex: 4,
-    dueDate: 'Dec 20, 2026',
-    createdAt: '2026-11-04',
-  },
-  {
-    id: 't5',
-    title: 'Integrate authentication',
-    description: 'Implement JWT authentication and RBAC guards.',
-    projectId: 'p1',
-    projectName: 'API Integration',
-    status: 'Completed',
-    orderIndex: 5,
-    dueDate: 'Nov 10, 2026',
-    createdAt: '2026-11-05',
-  },
-];
+interface LiveProject {
+  id: string;
+  name: string;
+  description?: string;
+  status?: string;
+}
 
 export const TasksPage: React.FC = () => {
   const { user } = useAuthStore();
+  const { addToast } = useNotificationStore();
   const isAdmin = user?.role === 'admin';
 
-  const [tasks, setTasks] = useState<Task[]>(INITIAL_TASKS);
+  const [projects, setProjects] = useState<LiveProject[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'All' | 'To Do' | 'In Progress' | 'Completed'>('All');
-  const [projectFilter, setProjectFilter] = useState('All Projects');
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
   const [search, setSearch] = useState('');
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
 
   // Create Task Modal state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [newTitle, setNewTitle] = useState('');
-  const [newProject, setNewProject] = useState('Website Redesign');
-  const [newStatus, setNewStatus] = useState<TaskStatus>('Pending');
-  const [newDueDate, setNewDueDate] = useState('Nov 30, 2026');
-  const [newDescription, setNewDescription] = useState('');
+  const [createTitle, setCreateTitle] = useState('');
+  const [createDesc, setCreateDesc] = useState('');
+  const [createProjectId, setCreateProjectId] = useState('');
+  const [createStatus, setCreateStatus] = useState<TaskStatus>('Pending');
+  const [createPriority, setCreatePriority] = useState<'Low' | 'Medium' | 'High'>('Medium');
+  const [createDueDate, setCreateDueDate] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Edit Task Modal state
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [editStatus, setEditStatus] = useState<TaskStatus>('Pending');
+  const [editDueDate, setEditDueDate] = useState('');
+
+  // 1. Fetch accessible projects
+  const fetchProjects = useCallback(async () => {
+    try {
+      const data: any = await api.get('/projects');
+      const projList = Array.isArray(data) ? data : [];
+      setProjects(projList);
+      if (projList.length > 0 && !createProjectId) {
+        setCreateProjectId(projList[0].id);
+      }
+    } catch (err: any) {
+      console.error('Failed to load projects:', err);
+    }
+  }, [createProjectId]);
+
+  // 2. Fetch tasks
+  const fetchTasks = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      let data: any;
+      if (selectedProjectId === 'all') {
+        data = await api.get('/tasks');
+      } else {
+        data = await api.get(`/projects/${selectedProjectId}/tasks`);
+      }
+      setTasks(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      console.error('Failed to load tasks:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [selectedProjectId]);
+
+  useEffect(() => {
+    fetchProjects();
+  }, [fetchProjects]);
+
+  useEffect(() => {
+    fetchTasks();
+  }, [fetchTasks]);
+
+  // 3. Socket.IO Real-time listeners
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+
+    // Join room for active project if selected
+    if (selectedProjectId !== 'all') {
+      joinProjectRoom(selectedProjectId);
+    }
+
+    const handleTaskCreated = (newTask: any) => {
+      setTasks((prev) => {
+        if (prev.some((t) => t.id === newTask.id)) return prev;
+        return [...prev, newTask];
+      });
+      addToast('Task Created', `New task "${newTask.title}" was created`, 'info');
+    };
+
+    const handleTaskUpdated = (updated: any) => {
+      setTasks((prev) => prev.map((t) => (t.id === updated.id ? { ...t, ...updated } : t)));
+    };
+
+    const handleStatusChanged = ({ taskId, status, actor }: any) => {
+      setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status } : t)));
+      addToast('Status Changed', `Task status updated to "${status}" by ${actor?.fullName || 'team member'}`, 'info');
+    };
+
+    const handleTaskReordered = ({ projectId, orderedTaskIds }: any) => {
+      if (selectedProjectId === 'all' || selectedProjectId === projectId) {
+        setTasks((prev) => {
+          const map = new Map(prev.map((t) => [t.id, t]));
+          const reordered: Task[] = [];
+          for (let i = 0; i < orderedTaskIds.length; i++) {
+            const t = map.get(orderedTaskIds[i]);
+            if (t) {
+              reordered.push({ ...t, orderIndex: i + 1 });
+              map.delete(orderedTaskIds[i]);
+            }
+          }
+          // append any tasks not in the reorder list (other projects)
+          for (const remaining of map.values()) {
+            reordered.push(remaining);
+          }
+          return reordered;
+        });
+      }
+    };
+
+    const handleTaskDeleted = ({ taskId }: any) => {
+      setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    };
+
+    socket.on('task:created', handleTaskCreated);
+    socket.on('task:updated', handleTaskUpdated);
+    socket.on('task:status_changed', handleStatusChanged);
+    socket.on('task:reordered', handleTaskReordered);
+    socket.on('task:deleted', handleTaskDeleted);
+
+    return () => {
+      if (selectedProjectId !== 'all') {
+        leaveProjectRoom(selectedProjectId);
+      }
+      socket.off('task:created', handleTaskCreated);
+      socket.off('task:updated', handleTaskUpdated);
+      socket.off('task:status_changed', handleStatusChanged);
+      socket.off('task:reordered', handleTaskReordered);
+      socket.off('task:deleted', handleTaskDeleted);
+    };
+  }, [selectedProjectId, addToast]);
 
   // Filter tasks based on activeTab, project, and search
   const filteredTasks = tasks.filter((task) => {
@@ -122,77 +176,161 @@ export const TasksPage: React.FC = () => {
       activeTab === 'All' ||
       (activeTab === 'To Do' && task.status === 'Pending') ||
       task.status === activeTab;
-    const matchesProject = projectFilter === 'All Projects' || task.projectName === projectFilter;
-    const matchesSearch = task.title.toLowerCase().includes(search.toLowerCase());
-    return matchesTab && matchesProject && matchesSearch;
+    const matchesSearch =
+      task.title.toLowerCase().includes(search.toLowerCase()) ||
+      (task.description && task.description.toLowerCase().includes(search.toLowerCase()));
+    return matchesTab && matchesSearch;
   });
 
-  const handleCreateTask = (e: React.FormEvent) => {
+  // Handle Create Task
+  const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTitle.trim()) return;
+    if (!createTitle.trim() || !createProjectId) return;
 
-    const newTask: Task = {
-      id: `t-${Date.now()}`,
-      title: newTitle,
-      description: newDescription,
-      projectId: 'p-custom',
-      projectName: newProject,
-      status: newStatus,
-      orderIndex: tasks.length + 1,
-      dueDate: newDueDate,
-      createdAt: new Date().toISOString(),
-    };
+    try {
+      setIsSubmitting(true);
+      const res: any = await api.post(`/projects/${createProjectId}/tasks`, {
+        title: createTitle.trim(),
+        description: createDesc.trim() || undefined,
+        status: createStatus,
+        priority: createPriority,
+        dueDate: createDueDate ? new Date(createDueDate).toISOString() : undefined,
+      });
 
-    setTasks([...tasks, newTask]);
-    setIsCreateModalOpen(false);
-    setNewTitle('');
-    setNewDescription('');
+      addToast('Success', `Task "${createTitle}" created successfully`, 'success');
+      setIsCreateModalOpen(false);
+      setCreateTitle('');
+      setCreateDesc('');
+      fetchTasks();
+    } catch (err: any) {
+      addToast('Error', err.message || 'Failed to create task', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleDeleteTask = (id: string) => {
+  // Handle Edit Task
+  const openEditModal = (task: Task) => {
+    setEditingTask(task);
+    setEditTitle(task.title);
+    setEditDesc(task.description || '');
+    setEditStatus(task.status as TaskStatus);
+    setEditDueDate(task.dueDate ? task.dueDate.split('T')[0] : '');
+    setIsEditModalOpen(true);
+  };
+
+  const handleUpdateTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTask || !editTitle.trim()) return;
+
+    try {
+      setIsSubmitting(true);
+      await api.put(`/tasks/${editingTask.id}`, {
+        title: editTitle.trim(),
+        description: editDesc.trim() || undefined,
+        status: editStatus,
+        dueDate: editDueDate ? new Date(editDueDate).toISOString() : undefined,
+      });
+
+      addToast('Success', 'Task updated successfully', 'success');
+      setIsEditModalOpen(false);
+      fetchTasks();
+    } catch (err: any) {
+      addToast('Error', err.message || 'Failed to update task', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Handle Status Quick Change
+  const handleStatusChange = async (taskId: string, newStatus: string) => {
+    // Optimistic update
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status: newStatus as TaskStatus } : t)));
+    try {
+      await api.patch(`/tasks/${taskId}/status`, { status: newStatus });
+      addToast('Status Updated', `Task moved to ${newStatus}`, 'success');
+    } catch (err: any) {
+      addToast('Error', err.message || 'Failed to update task status', 'error');
+      fetchTasks(); // revert on error
+    }
+  };
+
+  // Handle Delete Task (Admin Only)
+  const handleDeleteTask = async (id: string, title: string) => {
     if (!isAdmin) {
-      alert('Only administrators have permission to delete tasks.');
+      addToast('Permission Denied', 'Only administrators can delete tasks', 'error');
       return;
     }
-    if (window.confirm('Are you sure you want to delete this task?')) {
-      setTasks(tasks.filter((t) => t.id !== id));
+    if (window.confirm(`Are you sure you want to permanently delete "${title}"?`)) {
+      try {
+        await api.delete(`/tasks/${id}`);
+        setTasks((prev) => prev.filter((t) => t.id !== id));
+        addToast('Task Deleted', `"${title}" has been removed`, 'info');
+      } catch (err: any) {
+        addToast('Error', err.message || 'Failed to delete task', 'error');
+      }
     }
   };
 
-  /**
-   * =========================================================================
-   * TODO: [HAND-CODED MANDATORY IMPLEMENTATION] Drag-and-Drop Task Ordering
-   * =========================================================================
-   * Implement your drag-and-drop row handlers here (e.g. HTML5 Drag & Drop or library).
-   * Persist the reordered array to the backend API:
-   * await api.patch(`/projects/${projectId}/tasks/reorder`, { orderedTaskIds });
-   * =========================================================================
-   */
-  const handleDragStart = (e: React.DragEvent, index: number) => {
-    e.dataTransfer.setData('text/plain', index.toString());
+  // Drag and Drop Task Reordering (MANDATORY Persisted DnD)
+  const handleDragStart = (e: React.DragEvent, taskId: string) => {
+    setDraggedTaskId(taskId);
+    e.dataTransfer.setData('text/plain', taskId);
+    e.dataTransfer.effectAllowed = 'move';
   };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
   };
 
-  const handleDrop = (e: React.DragEvent, targetIndex: number) => {
+  const handleDrop = async (e: React.DragEvent, targetTaskId: string) => {
     e.preventDefault();
-    const sourceIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
-    if (isNaN(sourceIndex) || sourceIndex === targetIndex) return;
+    const sourceTaskId = e.dataTransfer.getData('text/plain') || draggedTaskId;
+    setDraggedTaskId(null);
 
-    const reordered = [...tasks];
-    const [moved] = reordered.splice(sourceIndex, 1);
-    reordered.splice(targetIndex, 0, moved);
+    if (!sourceTaskId || sourceTaskId === targetTaskId) return;
 
-    // Update orderIndex values
-    const updated = reordered.map((t, idx) => ({ ...t, orderIndex: idx + 1 }));
-    setTasks(updated);
+    const sourceTask = tasks.find((t) => t.id === sourceTaskId);
+    const targetTask = tasks.find((t) => t.id === targetTaskId);
 
-    // TODO: Send updated order to backend API for database persistence
-    // api.patch(`/projects/${moved.projectId}/tasks/reorder`, {
-    //   orderedTaskIds: updated.map(t => t.id)
-    // });
+    if (!sourceTask || !targetTask) return;
+
+    // We reorder tasks within the project of the target task
+    const targetProjectId = targetTask.projectId;
+    const projectTasks = tasks.filter((t) => t.projectId === targetProjectId);
+
+    const oldIndex = projectTasks.findIndex((t) => t.id === sourceTaskId);
+    const newIndex = projectTasks.findIndex((t) => t.id === targetTaskId);
+
+    if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return;
+
+    const reorderedProjectTasks = [...projectTasks];
+    const [moved] = reorderedProjectTasks.splice(oldIndex, 1);
+    reorderedProjectTasks.splice(newIndex, 0, moved);
+
+    const orderedTaskIds = reorderedProjectTasks.map((t) => t.id);
+
+    // Optimistic UI state update
+    setTasks((prev) => {
+      const otherTasks = prev.filter((t) => t.projectId !== targetProjectId);
+      const updatedProjectTasks = reorderedProjectTasks.map((t, idx) => ({
+        ...t,
+        orderIndex: idx + 1,
+      }));
+      return [...otherTasks, ...updatedProjectTasks];
+    });
+
+    // Backend PostgreSQL persistence API call
+    try {
+      await api.patch(`/projects/${targetProjectId}/tasks/reorder`, {
+        orderedTaskIds,
+      });
+      addToast('Tasks Reordered', 'New task order persisted to database', 'success');
+    } catch (err: any) {
+      addToast('Reorder Error', err.message || 'Could not save new task ordering', 'error');
+      fetchTasks(); // revert on failure
+    }
   };
 
   return (
@@ -202,7 +340,7 @@ export const TasksPage: React.FC = () => {
         <div>
           <h1 style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a' }}>Tasks</h1>
           <p style={{ fontSize: '13.5px', color: '#64748b', marginTop: '2px' }}>
-            Manage and track all your tasks.
+            Manage, reorder, and track all your tasks across accessible projects.
           </p>
         </div>
 
@@ -282,6 +420,7 @@ export const TasksPage: React.FC = () => {
                   color: activeTab === tab ? '#ffffff' : '#475569',
                   border: activeTab === tab ? 'none' : '1px solid #e2e8f0',
                   transition: 'all 0.15s ease',
+                  cursor: 'pointer',
                 }}
               >
                 {tab}
@@ -290,112 +429,170 @@ export const TasksPage: React.FC = () => {
           </div>
 
           {/* Project Selector Dropdown */}
-          <select
-            value={projectFilter}
-            onChange={(e) => setProjectFilter(e.target.value)}
-            style={{
-              padding: '8px 14px',
-              borderRadius: '10px',
-              border: '1px solid #e2e8f0',
-              backgroundColor: '#ffffff',
-              fontSize: '13.5px',
-              color: '#334155',
-              outline: 'none',
-              fontWeight: 500,
-            }}
-          >
-            <option>All Projects</option>
-            <option>Website Redesign</option>
-            <option>Mobile App</option>
-            <option>API Integration</option>
-          </select>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Filter size={15} color="#64748b" />
+            <select
+              value={selectedProjectId}
+              onChange={(e) => setSelectedProjectId(e.target.value)}
+              style={{
+                padding: '8px 14px',
+                borderRadius: '10px',
+                border: '1px solid #e2e8f0',
+                backgroundColor: '#ffffff',
+                fontSize: '13.5px',
+                color: '#334155',
+                outline: 'none',
+                fontWeight: 500,
+                cursor: 'pointer',
+              }}
+            >
+              <option value="all">All Accessible Projects</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {/* Task Table */}
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13.5px' }}>
-            <thead>
-              <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontWeight: 600, fontSize: '12.5px' }}>
-                <th style={{ padding: '14px 20px', width: '30px' }}>
-                  <GripVertical size={16} color="#94a3b8" />
-                </th>
-                <th style={{ padding: '14px 20px', width: '40px' }}>
-                  <input type="checkbox" style={{ accentColor: '#4f46e5', width: '16px', height: '16px', borderRadius: '4px' }} />
-                </th>
-                <th style={{ padding: '14px 20px' }}>Task Title</th>
-                <th style={{ padding: '14px 20px' }}>Project</th>
-                <th style={{ padding: '14px 20px' }}>Status</th>
-                <th style={{ padding: '14px 20px' }}>Due Date</th>
-                <th style={{ padding: '14px 20px', textAlign: 'center' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredTasks.map((task, index) => (
-                <tr
-                  key={task.id}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, index)}
-                  onDragOver={handleDragOver}
-                  onDrop={(e) => handleDrop(e, index)}
-                  style={{
-                    borderBottom: '1px solid #f1f5f9',
-                    cursor: 'grab',
-                    transition: 'background-color 0.15s ease',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#fafafa')}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-                >
-                  <td style={{ padding: '16px 20px', color: '#94a3b8' }}>
-                    <GripVertical size={16} />
-                  </td>
-                  <td style={{ padding: '16px 20px' }}>
-                    <input type="checkbox" style={{ accentColor: '#4f46e5', width: '16px', height: '16px', borderRadius: '4px' }} />
-                  </td>
-                  <td style={{ padding: '16px 20px', fontWeight: 600, color: '#0f172a' }}>
-                    {task.title}
-                  </td>
-                  <td style={{ padding: '16px 20px', color: '#475569' }}>
-                    {task.projectName}
-                  </td>
-                  <td style={{ padding: '16px 20px' }}>
-                    <Badge
-                      variant={
-                        task.status === 'Completed'
-                          ? 'completed'
-                          : task.status === 'In Progress'
-                          ? 'progress'
-                          : 'pending'
-                      }
-                    >
-                      {task.status}
-                    </Badge>
-                  </td>
-                  <td style={{ padding: '16px 20px', color: '#475569' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Calendar size={14} color="#94a3b8" />
-                      <span>{task.dueDate}</span>
-                    </div>
-                  </td>
-                  <td style={{ padding: '16px 20px', textAlign: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                      <button style={{ color: '#64748b', padding: '4px' }} title="Edit">
-                        <Edit2 size={16} />
-                      </button>
-                      {isAdmin && (
-                        <button
-                          onClick={() => handleDeleteTask(task.id)}
-                          style={{ color: '#ef4444', padding: '4px' }}
-                          title="Delete (Admin only)"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      )}
-                    </div>
-                  </td>
+          {isLoading ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px', color: '#64748b', gap: '10px' }}>
+              <Loader2 size={24} className="spin-animate" />
+              <span>Loading tasks...</span>
+            </div>
+          ) : filteredTasks.length === 0 ? (
+            <div style={{ padding: '60px 20px', textAlign: 'center', color: '#64748b' }}>
+              <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: '#f1f5f9', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: '12px' }}>
+                <CheckCircle2 size={24} color="#94a3b8" />
+              </div>
+              <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#1e293b' }}>No tasks found</h3>
+              <p style={{ fontSize: '13.5px', marginTop: '4px' }}>
+                {search ? 'No tasks match your search criteria' : 'Create your first task to get started'}
+              </p>
+            </div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13.5px' }}>
+              <thead>
+                <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontWeight: 600, fontSize: '12.5px' }}>
+                  <th style={{ padding: '14px 20px', width: '30px' }} title="Drag handle">
+                    <GripVertical size={16} color="#94a3b8" />
+                  </th>
+                  <th style={{ padding: '14px 20px', width: '50px' }}>#</th>
+                  <th style={{ padding: '14px 20px' }}>Task Title</th>
+                  <th style={{ padding: '14px 20px' }}>Project</th>
+                  <th style={{ padding: '14px 20px' }}>Status</th>
+                  <th style={{ padding: '14px 20px' }}>Due Date</th>
+                  <th style={{ padding: '14px 20px', textAlign: 'center' }}>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filteredTasks.map((task, index) => (
+                  <tr
+                    key={task.id}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, task.id)}
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => handleDrop(e, task.id)}
+                    style={{
+                      borderBottom: '1px solid #f1f5f9',
+                      cursor: 'grab',
+                      transition: 'background-color 0.15s ease',
+                      backgroundColor: draggedTaskId === task.id ? '#f1f5f9' : 'transparent',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#fafafa')}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = draggedTaskId === task.id ? '#f1f5f9' : 'transparent')}
+                  >
+                    <td style={{ padding: '16px 20px', color: '#94a3b8' }}>
+                      <GripVertical size={16} />
+                    </td>
+                    <td style={{ padding: '16px 20px', color: '#94a3b8', fontSize: '12px' }}>
+                      {task.orderIndex || index + 1}
+                    </td>
+                    <td style={{ padding: '16px 20px', fontWeight: 600, color: '#0f172a' }}>
+                      <div>{task.title}</div>
+                      {task.description && (
+                        <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 400, marginTop: '2px', maxWidth: '380px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {task.description}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ padding: '16px 20px', color: '#475569' }}>
+                      <span style={{ padding: '3px 8px', borderRadius: '6px', backgroundColor: '#f1f5f9', fontSize: '12px', fontWeight: 500 }}>
+                        {task.projectName || 'Project'}
+                      </span>
+                    </td>
+                    <td style={{ padding: '16px 20px' }}>
+                      <select
+                        value={task.status}
+                        onChange={(e) => handleStatusChange(task.id, e.target.value)}
+                        style={{
+                          padding: '4px 10px',
+                          borderRadius: '16px',
+                          fontSize: '12px',
+                          fontWeight: 700,
+                          border: 'none',
+                          cursor: 'pointer',
+                          backgroundColor:
+                            task.status === 'Completed'
+                              ? '#dcfce7'
+                              : task.status === 'In Progress'
+                              ? '#e0e7ff'
+                              : '#fef3c7',
+                          color:
+                            task.status === 'Completed'
+                              ? '#15803d'
+                              : task.status === 'In Progress'
+                              ? '#4338ca'
+                              : '#b45309',
+                        }}
+                      >
+                        <option value="Pending">Pending</option>
+                        <option value="In Progress">In Progress</option>
+                        <option value="Completed">Completed</option>
+                      </select>
+                    </td>
+                    <td style={{ padding: '16px 20px', color: '#475569' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Calendar size={14} color="#94a3b8" />
+                        <span>
+                          {task.dueDate
+                            ? new Date(task.dueDate).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                              })
+                            : 'No due date'}
+                        </span>
+                      </div>
+                    </td>
+                    <td style={{ padding: '16px 20px', textAlign: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                        <button
+                          onClick={() => openEditModal(task)}
+                          style={{ color: '#64748b', padding: '6px', borderRadius: '6px', cursor: 'pointer', border: 'none', background: 'transparent' }}
+                          title="Edit Task"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        {isAdmin && (
+                          <button
+                            onClick={() => handleDeleteTask(task.id, task.title)}
+                            style={{ color: '#ef4444', padding: '6px', borderRadius: '6px', cursor: 'pointer', border: 'none', background: 'transparent' }}
+                            title="Delete Task (Admin Only)"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 
@@ -404,16 +601,37 @@ export const TasksPage: React.FC = () => {
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         title="Create Task"
-        subtitle="Add a new task to a project."
+        subtitle="Add a new task to an accessible project."
       >
         <form onSubmit={handleCreateTask} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <Input
             label="Task Title"
             required
-            placeholder="Enter task title"
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
+            placeholder="e.g. Design Dashboard Components"
+            value={createTitle}
+            onChange={(e) => setCreateTitle(e.target.value)}
           />
+
+          <div>
+            <label style={{ fontSize: '13.5px', fontWeight: 600, color: '#1e293b', marginBottom: '6px', display: 'block' }}>
+              Description
+            </label>
+            <textarea
+              placeholder="Task details and deliverables..."
+              value={createDesc}
+              onChange={(e) => setCreateDesc(e.target.value)}
+              rows={3}
+              style={{
+                width: '100%',
+                padding: '10px 14px',
+                borderRadius: '10px',
+                border: '1.5px solid #e2e8f0',
+                outline: 'none',
+                fontSize: '13.5px',
+                fontFamily: 'inherit',
+              }}
+            />
+          </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
             <div>
@@ -421,8 +639,9 @@ export const TasksPage: React.FC = () => {
                 Project *
               </label>
               <select
-                value={newProject}
-                onChange={(e) => setNewProject(e.target.value)}
+                value={createProjectId}
+                onChange={(e) => setCreateProjectId(e.target.value)}
+                required
                 style={{
                   width: '100%',
                   padding: '11px 14px',
@@ -433,9 +652,11 @@ export const TasksPage: React.FC = () => {
                   backgroundColor: '#ffffff',
                 }}
               >
-                <option>Website Redesign</option>
-                <option>Mobile App</option>
-                <option>API Integration</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -444,8 +665,8 @@ export const TasksPage: React.FC = () => {
                 Status *
               </label>
               <select
-                value={newStatus}
-                onChange={(e) => setNewStatus(e.target.value as TaskStatus)}
+                value={createStatus}
+                onChange={(e) => setCreateStatus(e.target.value as TaskStatus)}
                 style={{
                   width: '100%',
                   padding: '11px 14px',
@@ -456,19 +677,81 @@ export const TasksPage: React.FC = () => {
                   backgroundColor: '#ffffff',
                 }}
               >
-                <option value="Pending">To Do</option>
+                <option value="Pending">Pending (To Do)</option>
                 <option value="In Progress">In Progress</option>
                 <option value="Completed">Completed</option>
               </select>
             </div>
           </div>
 
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <div>
+              <label style={{ fontSize: '13.5px', fontWeight: 600, color: '#1e293b', marginBottom: '6px', display: 'block' }}>
+                Priority
+              </label>
+              <select
+                value={createPriority}
+                onChange={(e) => setCreatePriority(e.target.value as any)}
+                style={{
+                  width: '100%',
+                  padding: '11px 14px',
+                  borderRadius: '10px',
+                  border: '1.5px solid #e2e8f0',
+                  outline: 'none',
+                  fontSize: '14px',
+                  backgroundColor: '#ffffff',
+                }}
+              >
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={{ fontSize: '13.5px', fontWeight: 600, color: '#1e293b', marginBottom: '6px', display: 'block' }}>
+                Due Date
+              </label>
+              <input
+                type="date"
+                value={createDueDate}
+                onChange={(e) => setCreateDueDate(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px 14px',
+                  borderRadius: '10px',
+                  border: '1.5px solid #e2e8f0',
+                  outline: 'none',
+                  fontSize: '14px',
+                }}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
+            <Button variant="secondary" onClick={() => setIsCreateModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" isLoading={isSubmitting}>
+              Create Task
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Modal: Edit Task */}
+      <Modal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        title="Edit Task"
+        subtitle="Update task information and status."
+      >
+        <form onSubmit={handleUpdateTask} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <Input
-            label="Due Date"
-            type="text"
-            placeholder="Select due date (e.g. Nov 30, 2026)"
-            value={newDueDate}
-            onChange={(e) => setNewDueDate(e.target.value)}
+            label="Task Title"
+            required
+            value={editTitle}
+            onChange={(e) => setEditTitle(e.target.value)}
           />
 
           <div>
@@ -476,29 +759,71 @@ export const TasksPage: React.FC = () => {
               Description
             </label>
             <textarea
+              value={editDesc}
+              onChange={(e) => setEditDesc(e.target.value)}
               rows={3}
-              placeholder="Add task description (optional)"
-              value={newDescription}
-              onChange={(e) => setNewDescription(e.target.value)}
               style={{
                 width: '100%',
                 padding: '10px 14px',
                 borderRadius: '10px',
                 border: '1.5px solid #e2e8f0',
                 outline: 'none',
-                fontSize: '14px',
+                fontSize: '13.5px',
                 fontFamily: 'inherit',
-                boxSizing: 'border-box',
               }}
             />
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
-            <Button type="button" variant="outline" onClick={() => setIsCreateModalOpen(false)}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <div>
+              <label style={{ fontSize: '13.5px', fontWeight: 600, color: '#1e293b', marginBottom: '6px', display: 'block' }}>
+                Status
+              </label>
+              <select
+                value={editStatus}
+                onChange={(e) => setEditStatus(e.target.value as TaskStatus)}
+                style={{
+                  width: '100%',
+                  padding: '11px 14px',
+                  borderRadius: '10px',
+                  border: '1.5px solid #e2e8f0',
+                  outline: 'none',
+                  fontSize: '14px',
+                  backgroundColor: '#ffffff',
+                }}
+              >
+                <option value="Pending">Pending (To Do)</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Completed">Completed</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={{ fontSize: '13.5px', fontWeight: 600, color: '#1e293b', marginBottom: '6px', display: 'block' }}>
+                Due Date
+              </label>
+              <input
+                type="date"
+                value={editDueDate}
+                onChange={(e) => setEditDueDate(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px 14px',
+                  borderRadius: '10px',
+                  border: '1.5px solid #e2e8f0',
+                  outline: 'none',
+                  fontSize: '14px',
+                }}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
+            <Button variant="secondary" onClick={() => setIsEditModalOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" variant="primary">
-              Create Task
+            <Button type="submit" variant="primary" isLoading={isSubmitting}>
+              Save Changes
             </Button>
           </div>
         </form>

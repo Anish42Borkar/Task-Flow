@@ -22,5 +22,8 @@
     "socketio"
   ],
   "author": "TaskFlow Team",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "drizzle-orm": "^0.45.4"
+  }
 }

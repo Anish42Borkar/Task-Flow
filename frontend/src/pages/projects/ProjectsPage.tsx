@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Folder,
   Search,
@@ -16,193 +17,170 @@ import {
   HardDrive,
   BookOpen,
   Star,
+  Loader2,
+  CheckCircle2,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
+import { useNotificationStore } from '../../stores/notificationStore';
 import { Project, ProjectStatus } from '../../types';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
 import { Input } from '../../components/common/Input';
+import { api } from '../../services/api';
 
-const INITIAL_PROJECTS: (Project & { iconColor: string; icon: React.ReactNode })[] = [
-  {
-    id: 'p1',
-    name: 'QuickChat',
-    description: 'Real-time chat application with messaging and file sharing',
-    status: 'active',
-    tasksCount: 24,
-    completedTasksCount: 18,
-    progressPercentage: 75,
-    createdAt: '28 Oct 2026',
-    iconColor: '#8b5cf6',
-    icon: <MessageSquare size={16} />,
-    members: [
-      { id: '1', fullName: 'Anish Borkar', email: 'a@t.com', role: 'admin', isActive: true },
-      { id: '2', fullName: 'Priya Sharma', email: 'p@t.com', role: 'user', isActive: true },
-      { id: '3', fullName: 'Rahul Kumar', email: 'r@t.com', role: 'user', isActive: true },
-    ],
-  },
-  {
-    id: 'p2',
-    name: 'Task Management',
-    description: 'Project and task tracking system',
-    status: 'active',
-    tasksCount: 18,
-    completedTasksCount: 11,
-    progressPercentage: 60,
-    createdAt: '20 Oct 2026',
-    iconColor: '#3b82f6',
-    icon: <Code2 size={16} />,
-    members: [
-      { id: '1', fullName: 'Anish Borkar', email: 'a@t.com', role: 'admin', isActive: true },
-      { id: '3', fullName: 'Rahul Kumar', email: 'r@t.com', role: 'user', isActive: true },
-    ],
-  },
-  {
-    id: 'p3',
-    name: 'Website Redesign',
-    description: 'Marketing website revamp with new UI/UX',
-    status: 'active',
-    tasksCount: 14,
-    completedTasksCount: 6,
-    progressPercentage: 43,
-    createdAt: '15 Oct 2026',
-    iconColor: '#10b981',
-    icon: <Layers size={16} />,
-    members: [
-      { id: '2', fullName: 'Priya Sharma', email: 'p@t.com', role: 'user', isActive: true },
-      { id: '4', fullName: 'Amit Patil', email: 'am@t.com', role: 'user', isActive: true },
-    ],
-  },
-  {
-    id: 'p4',
-    name: 'Mobile App',
-    description: 'Cross-platform mobile application (React Native)',
-    status: 'in_progress',
-    tasksCount: 12,
-    completedTasksCount: 4,
-    progressPercentage: 33,
-    createdAt: '10 Oct 2026',
-    iconColor: '#6366f1',
-    icon: <Smartphone size={16} />,
-    members: [
-      { id: '1', fullName: 'Anish Borkar', email: 'a@t.com', role: 'admin', isActive: true },
-      { id: '4', fullName: 'Amit Patil', email: 'am@t.com', role: 'user', isActive: true },
-    ],
-  },
-  {
-    id: 'p5',
-    name: 'Analytics Platform',
-    description: 'Internal analytics and reporting tool',
-    status: 'in_progress',
-    tasksCount: 10,
-    completedTasksCount: 2,
-    progressPercentage: 20,
-    createdAt: '08 Oct 2026',
-    iconColor: '#0ea5e9',
-    icon: <BarChart size={16} />,
-    members: [
-      { id: '3', fullName: 'Rahul Kumar', email: 'r@t.com', role: 'user', isActive: true },
-    ],
-  },
-  {
-    id: 'p6',
-    name: 'File Storage',
-    description: 'Secure file storage and sharing',
-    status: 'active',
-    tasksCount: 8,
-    completedTasksCount: 7,
-    progressPercentage: 87,
-    createdAt: '05 Oct 2026',
-    iconColor: '#06b6d4',
-    icon: <HardDrive size={16} />,
-    members: [
-      { id: '1', fullName: 'Anish Borkar', email: 'a@t.com', role: 'admin', isActive: true },
-      { id: '2', fullName: 'Priya Sharma', email: 'p@t.com', role: 'user', isActive: true },
-    ],
-  },
-  {
-    id: 'p7',
-    name: 'Knowledge Base',
-    description: 'Team documentation and guides',
-    status: 'active',
-    tasksCount: 6,
-    completedTasksCount: 3,
-    progressPercentage: 50,
-    createdAt: '02 Oct 2026',
-    iconColor: '#ec4899',
-    icon: <BookOpen size={16} />,
-    members: [
-      { id: '4', fullName: 'Amit Patil', email: 'am@t.com', role: 'user', isActive: true },
-    ],
-  },
-  {
-    id: 'p8',
-    name: 'Client Portal',
-    description: 'Client access portal for project updates',
-    status: 'on_hold',
-    tasksCount: 4,
-    completedTasksCount: 1,
-    progressPercentage: 25,
-    createdAt: '28 Sep 2026',
-    iconColor: '#f59e0b',
-    icon: <Star size={16} />,
-    members: [
-      { id: '1', fullName: 'Anish Borkar', email: 'a@t.com', role: 'admin', isActive: true },
-    ],
-  },
+const ICONS = [
+  <Layers size={16} key="1" />,
+  <Smartphone size={16} key="2" />,
+  <MessageSquare size={16} key="3" />,
+  <Code2 size={16} key="4" />,
+  <BarChart size={16} key="5" />,
+  <HardDrive size={16} key="6" />,
 ];
+
+const COLORS = ['#8b5cf6', '#3b82f6', '#10b981', '#6366f1', '#0ea5e9', '#ec4899', '#f59e0b'];
 
 export const ProjectsPage: React.FC = () => {
   const { user } = useAuthStore();
+  const { addToast } = useNotificationStore();
+  const navigate = useNavigate();
   const isAdmin = user?.role === 'admin';
 
-  const [projects, setProjects] = useState(INITIAL_PROJECTS);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // New project form state
+  // Create Project Modal state
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectDesc, setNewProjectDesc] = useState('');
   const [newProjectStatus, setNewProjectStatus] = useState<ProjectStatus>('active');
+  const [newProjectDueDate, setNewProjectDueDate] = useState('');
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Edit Project Modal state
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [editStatus, setEditStatus] = useState<ProjectStatus>('active');
+
+  const fetchProjects = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const data: any = await api.get('/projects');
+      setProjects(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      addToast('Error', err.message || 'Failed to load projects', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [addToast]);
+
+  const fetchUsers = useCallback(async () => {
+    if (!isAdmin) return;
+    try {
+      const data: any = await api.get('/users?limit=50');
+      const list = data?.users || (Array.isArray(data) ? data : []);
+      setAllUsers(list);
+    } catch (err) {
+      console.warn('Failed to load users for project members selection');
+    }
+  }, [isAdmin]);
+
+  useEffect(() => {
+    fetchProjects();
+    fetchUsers();
+  }, [fetchProjects, fetchUsers]);
 
   const filteredProjects = projects.filter((p) => {
     const matchesSearch =
       p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.description?.toLowerCase().includes(search.toLowerCase());
+      (p.description && p.description.toLowerCase().includes(search.toLowerCase()));
     const matchesStatus = statusFilter === 'all' || p.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
-  const handleCreateProject = (e: React.FormEvent) => {
+  const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProjectName.trim()) return;
 
-    const newProject = {
-      id: `p-${Date.now()}`,
-      name: newProjectName,
-      description: newProjectDesc,
-      status: newProjectStatus,
-      tasksCount: 0,
-      completedTasksCount: 0,
-      progressPercentage: 0,
-      createdAt: 'Just now',
-      iconColor: '#4f46e5',
-      icon: <Folder size={16} />,
-      members: [{ id: user?.id || '1', fullName: user?.fullName || 'Admin', email: user?.email || '', role: 'admin' as const, isActive: true }],
-    };
+    try {
+      setIsSubmitting(true);
+      await api.post('/projects', {
+        name: newProjectName.trim(),
+        description: newProjectDesc.trim() || undefined,
+        status: newProjectStatus,
+        dueDate: newProjectDueDate ? new Date(newProjectDueDate).toISOString() : undefined,
+        memberIds: selectedMemberIds,
+      });
 
-    setProjects([newProject, ...projects]);
-    setIsModalOpen(false);
-    setNewProjectName('');
-    setNewProjectDesc('');
+      addToast('Success', `Project "${newProjectName}" created successfully`, 'success');
+      setIsModalOpen(false);
+      setNewProjectName('');
+      setNewProjectDesc('');
+      setSelectedMemberIds([]);
+      fetchProjects();
+    } catch (err: any) {
+      addToast('Error', err.message || 'Failed to create project', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleDeleteProject = (id: string) => {
-    if (window.confirm('Are you sure you want to delete this project?')) {
-      setProjects(projects.filter((p) => p.id !== id));
+  const openEditModal = (project: Project) => {
+    setEditingProject(project);
+    setEditName(project.name);
+    setEditDesc(project.description || '');
+    setEditStatus(project.status);
+    setIsEditModalOpen(true);
+  };
+
+  const handleUpdateProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProject || !editName.trim()) return;
+
+    try {
+      setIsSubmitting(true);
+      await api.patch(`/projects/${editingProject.id}`, {
+        name: editName.trim(),
+        description: editDesc.trim() || undefined,
+        status: editStatus,
+      });
+
+      addToast('Success', `Project updated successfully`, 'success');
+      setIsEditModalOpen(false);
+      fetchProjects();
+    } catch (err: any) {
+      addToast('Error', err.message || 'Failed to update project', 'error');
+    } finally {
+      setIsSubmitting(false);
     }
+  };
+
+  const handleDeleteProject = async (id: string, name: string) => {
+    if (!isAdmin) {
+      addToast('Permission Denied', 'Only administrators can delete projects', 'error');
+      return;
+    }
+    if (window.confirm(`Are you sure you want to delete project "${name}" and all its tasks?`)) {
+      try {
+        await api.delete(`/projects/${id}`);
+        setProjects((prev) => prev.filter((p) => p.id !== id));
+        addToast('Project Deleted', `"${name}" removed`, 'info');
+      } catch (err: any) {
+        addToast('Error', err.message || 'Failed to delete project', 'error');
+      }
+    }
+  };
+
+  const toggleMemberSelection = (userId: string) => {
+    setSelectedMemberIds((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId],
+    );
   };
 
   return (
@@ -217,7 +195,9 @@ export const ProjectsPage: React.FC = () => {
             <h1 style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a' }}>Projects</h1>
           </div>
           <p style={{ fontSize: '13.5px', color: '#64748b', marginTop: '2px' }}>
-            Create and manage projects, assign members and track progress
+            {isAdmin
+              ? 'Create and manage projects, assign members, and track real-time delivery.'
+              : 'Projects you have been assigned to as an active team member.'}
           </p>
         </div>
       </div>
@@ -290,12 +270,14 @@ export const ProjectsPage: React.FC = () => {
                 color: '#334155',
                 outline: 'none',
                 fontWeight: 500,
+                cursor: 'pointer',
               }}
             >
               <option value="all">All Status</option>
               <option value="active">Active</option>
               <option value="in_progress">In Progress</option>
               <option value="on_hold">On Hold</option>
+              <option value="completed">Completed</option>
             </select>
 
             {/* Create Project Button (Admin Only) */}
@@ -313,189 +295,237 @@ export const ProjectsPage: React.FC = () => {
 
         {/* Projects Table */}
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13.5px' }}>
-            <thead>
-              <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontWeight: 600, fontSize: '12.5px' }}>
-                <th style={{ padding: '14px 20px', width: '40px' }}>#</th>
-                <th style={{ padding: '14px 20px' }}>Project Name</th>
-                <th style={{ padding: '14px 20px' }}>Description</th>
-                <th style={{ padding: '14px 20px' }}>Members</th>
-                <th style={{ padding: '14px 20px' }}>Tasks</th>
-                <th style={{ padding: '14px 20px', width: '140px' }}>Progress</th>
-                <th style={{ padding: '14px 20px' }}>Status</th>
-                <th style={{ padding: '14px 20px' }}>Created At</th>
-                <th style={{ padding: '14px 20px', textAlign: 'center' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredProjects.map((project, index) => (
-                <tr
-                  key={project.id}
-                  style={{
-                    borderBottom: '1px solid #f1f5f9',
-                    transition: 'background-color 0.15s ease',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#fafafa')}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-                >
-                  <td style={{ padding: '16px 20px', color: '#94a3b8' }}>{index + 1}</td>
-                  
-                  {/* Project Name + Icon */}
-                  <td style={{ padding: '16px 20px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div
-                        style={{
-                          width: '32px',
-                          height: '32px',
-                          borderRadius: '8px',
-                          backgroundColor: `${project.iconColor}15`,
-                          color: project.iconColor,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0,
-                        }}
-                      >
-                        {project.icon}
-                      </div>
-                      <span style={{ fontWeight: 700, color: '#0f172a' }}>{project.name}</span>
-                    </div>
-                  </td>
-
-                  {/* Description */}
-                  <td style={{ padding: '16px 20px', color: '#475569', maxWidth: '240px' }}>
-                    <span style={{ display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                      {project.description}
-                    </span>
-                  </td>
-
-                  {/* Stacked Members Avatars */}
-                  <td style={{ padding: '16px 20px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center' }}>
-                      {(project.members || []).slice(0, 3).map((m, mIdx) => (
-                        <div
-                          key={m.id}
-                          style={{
-                            width: '28px',
-                            height: '28px',
-                            borderRadius: '50%',
-                            backgroundColor: '#4f46e5',
-                            color: '#ffffff',
-                            fontSize: '11px',
-                            fontWeight: 700,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            border: '2px solid #ffffff',
-                            marginLeft: mIdx > 0 ? '-8px' : '0',
-                          }}
-                        >
-                          {m.fullName.split(' ').map((n) => n[0]).join('')}
-                        </div>
-                      ))}
-                      {(project.members?.length || 0) > 3 && (
-                        <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', marginLeft: '6px' }}>
-                          +{project.members!.length - 3}
-                        </span>
-                      )}
-                    </div>
-                  </td>
-
-                  {/* Tasks count */}
-                  <td style={{ padding: '16px 20px', fontWeight: 600, color: '#0f172a' }}>
-                    {project.tasksCount}
-                  </td>
-
-                  {/* Progress bar */}
-                  <td style={{ padding: '16px 20px' }}>
-                    <div>
-                      <div style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>
-                        {project.progressPercentage}%
-                      </div>
-                      <div style={{ width: '100%', height: '6px', backgroundColor: '#e2e8f0', borderRadius: '9999px', overflow: 'hidden' }}>
-                        <div
-                          style={{
-                            width: `${project.progressPercentage}%`,
-                            height: '100%',
-                            backgroundColor: '#4f46e5',
-                            borderRadius: '9999px',
-                          }}
-                        />
-                      </div>
-                    </div>
-                  </td>
-
-                  {/* Status Badge */}
-                  <td style={{ padding: '16px 20px' }}>
-                    <Badge
-                      variant={
-                        project.status === 'active'
-                          ? 'active'
-                          : project.status === 'in_progress'
-                          ? 'progress'
-                          : 'pending'
-                      }
-                      dot
-                    >
-                      {project.status === 'active'
-                        ? 'Active'
-                        : project.status === 'in_progress'
-                        ? 'In Progress'
-                        : 'On Hold'}
-                    </Badge>
-                  </td>
-
-                  {/* Created At */}
-                  <td style={{ padding: '16px 20px', color: '#64748b' }}>
-                    {project.createdAt}
-                  </td>
-
-                  {/* Actions */}
-                  <td style={{ padding: '16px 20px', textAlign: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                      <button style={{ color: '#64748b', padding: '4px', borderRadius: '4px' }} title="View Details">
-                        <Eye size={16} />
-                      </button>
-                      {isAdmin && (
-                        <>
-                          <button style={{ color: '#4f46e5', padding: '4px', borderRadius: '4px' }} title="Edit">
-                            <Edit2 size={16} />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteProject(project.id)}
-                            style={{ color: '#ef4444', padding: '4px', borderRadius: '4px' }}
-                            title="Delete"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </td>
+          {isLoading ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px', color: '#64748b', gap: '10px' }}>
+              <Loader2 size={24} className="spin-animate" />
+              <span>Loading projects...</span>
+            </div>
+          ) : filteredProjects.length === 0 ? (
+            <div style={{ padding: '60px 20px', textAlign: 'center', color: '#64748b' }}>
+              <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: '#f1f5f9', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: '12px' }}>
+                <CheckCircle2 size={24} color="#94a3b8" />
+              </div>
+              <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#1e293b' }}>No projects found</h3>
+              <p style={{ fontSize: '13.5px', marginTop: '4px' }}>
+                {search ? 'Try adjusting your search' : 'No projects are assigned to your account.'}
+              </p>
+            </div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13.5px' }}>
+              <thead>
+                <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontWeight: 600, fontSize: '12.5px' }}>
+                  <th style={{ padding: '14px 20px', width: '40px' }}>#</th>
+                  <th style={{ padding: '14px 20px' }}>Project Name</th>
+                  <th style={{ padding: '14px 20px' }}>Description</th>
+                  <th style={{ padding: '14px 20px' }}>Members</th>
+                  <th style={{ padding: '14px 20px' }}>Tasks</th>
+                  <th style={{ padding: '14px 20px', width: '140px' }}>Progress</th>
+                  <th style={{ padding: '14px 20px' }}>Status</th>
+                  <th style={{ padding: '14px 20px' }}>Created At</th>
+                  <th style={{ padding: '14px 20px', textAlign: 'center' }}>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {filteredProjects.map((project, index) => {
+                  const iconColor = COLORS[index % COLORS.length];
+                  const icon = ICONS[index % ICONS.length];
 
-        {/* Footer Pagination */}
-        <div
-          style={{
-            padding: '16px 24px',
-            borderTop: '1px solid #f1f5f9',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            fontSize: '13px',
-            color: '#64748b',
-          }}
-        >
-          <div>Showing 1 - {filteredProjects.length} of {projects.length} projects</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <button style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', color: '#94a3b8' }}>&lt;</button>
-            <button style={{ padding: '6px 12px', borderRadius: '8px', backgroundColor: '#4f46e5', color: '#ffffff', fontWeight: 700 }}>1</button>
-            <button style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', color: '#94a3b8' }}>&gt;</button>
-          </div>
+                  return (
+                    <tr
+                      key={project.id}
+                      style={{
+                        borderBottom: '1px solid #f1f5f9',
+                        transition: 'background-color 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#fafafa')}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                    >
+                      <td style={{ padding: '16px 20px', color: '#94a3b8' }}>{index + 1}</td>
+
+                      {/* Project Name + Icon */}
+                      <td style={{ padding: '16px 20px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <div
+                            style={{
+                              width: '32px',
+                              height: '32px',
+                              borderRadius: '8px',
+                              backgroundColor: `${iconColor}15`,
+                              color: iconColor,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flexShrink: 0,
+                            }}
+                          >
+                            {icon}
+                          </div>
+                          <div>
+                            <span
+                              onClick={() => navigate('/tasks')}
+                              style={{ fontWeight: 700, color: '#0f172a', cursor: 'pointer' }}
+                            >
+                              {project.name}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Description */}
+                      <td style={{ padding: '16px 20px', color: '#64748b', maxWidth: '240px' }}>
+                        <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {project.description || '—'}
+                        </div>
+                      </td>
+
+                      {/* Members Avatar Pile */}
+                      <td style={{ padding: '16px 20px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                          {project.members && project.members.length > 0 ? (
+                            project.members.slice(0, 3).map((m: any, mIdx: number) => {
+                              const initials = m.fullName
+                                ? m.fullName.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()
+                                : 'U';
+                              return (
+                                <div
+                                  key={m.id || mIdx}
+                                  title={m.fullName}
+                                  style={{
+                                    width: '28px',
+                                    height: '28px',
+                                    borderRadius: '50%',
+                                    backgroundColor: COLORS[mIdx % COLORS.length],
+                                    color: '#ffffff',
+                                    fontSize: '11px',
+                                    fontWeight: 700,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    border: '2px solid #ffffff',
+                                    marginLeft: mIdx > 0 ? '-8px' : '0',
+                                  }}
+                                >
+                                  {initials}
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <span style={{ color: '#94a3b8', fontSize: '12px' }}>None</span>
+                          )}
+                          {project.members && project.members.length > 3 && (
+                            <div
+                              style={{
+                                width: '28px',
+                                height: '28px',
+                                borderRadius: '50%',
+                                backgroundColor: '#e2e8f0',
+                                color: '#475569',
+                                fontSize: '10px',
+                                fontWeight: 700,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                border: '2px solid #ffffff',
+                                marginLeft: '-8px',
+                              }}
+                            >
+                              +{project.members.length - 3}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Tasks Count */}
+                      <td style={{ padding: '16px 20px', color: '#0f172a', fontWeight: 600 }}>
+                        {project.completedTasksCount || 0} / {project.tasksCount || 0}
+                      </td>
+
+                      {/* Progress Bar */}
+                      <td style={{ padding: '16px 20px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div style={{ flex: 1, height: '6px', backgroundColor: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
+                            <div
+                              style={{
+                                width: `${project.progressPercentage || 0}%`,
+                                height: '100%',
+                                backgroundColor:
+                                  (project.progressPercentage || 0) > 70
+                                    ? '#10b981'
+                                    : (project.progressPercentage || 0) > 30
+                                    ? '#3b82f6'
+                                    : '#f59e0b',
+                                borderRadius: '3px',
+                              }}
+                            />
+                          </div>
+                          <span style={{ fontSize: '12px', fontWeight: 600, color: '#475569', minWidth: '32px' }}>
+                            {project.progressPercentage || 0}%
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Status Badge */}
+                      <td style={{ padding: '16px 20px' }}>
+                        <Badge
+                          variant={
+                            project.status === 'active' || project.status === 'completed'
+                              ? 'completed'
+                              : project.status === 'in_progress'
+                              ? 'progress'
+                              : 'pending'
+                          }
+                        >
+                          {project.status.replace('_', ' ')}
+                        </Badge>
+                      </td>
+
+                      {/* Created At */}
+                      <td style={{ padding: '16px 20px', color: '#64748b', fontSize: '12.5px' }}>
+                        {project.createdAt
+                          ? new Date(project.createdAt).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric',
+                            })
+                          : '—'}
+                      </td>
+
+                      {/* Actions */}
+                      <td style={{ padding: '16px 20px', textAlign: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                          <button
+                            onClick={() => navigate('/tasks')}
+                            style={{ color: '#4f46e5', padding: '6px', borderRadius: '6px', border: 'none', background: 'transparent', cursor: 'pointer' }}
+                            title="View Tasks"
+                          >
+                            <Eye size={16} />
+                          </button>
+                          {isAdmin && (
+                            <>
+                              <button
+                                onClick={() => openEditModal(project)}
+                                style={{ color: '#64748b', padding: '6px', borderRadius: '6px', border: 'none', background: 'transparent', cursor: 'pointer' }}
+                                title="Edit Project"
+                              >
+                                <Edit2 size={16} />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteProject(project.id, project.name)}
+                                style={{ color: '#ef4444', padding: '6px', borderRadius: '6px', border: 'none', background: 'transparent', cursor: 'pointer' }}
+                                title="Delete Project"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 
@@ -504,13 +534,13 @@ export const ProjectsPage: React.FC = () => {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title="Create New Project"
-        subtitle="Define a project, assign status and team members"
+        subtitle="Set up a workspace and assign team members."
       >
         <form onSubmit={handleCreateProject} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <Input
             label="Project Name"
             required
-            placeholder="e.g. Website Redesign"
+            placeholder="e.g. NextGen Mobile Portal"
             value={newProjectName}
             onChange={(e) => setNewProjectName(e.target.value)}
           />
@@ -520,19 +550,155 @@ export const ProjectsPage: React.FC = () => {
               Description
             </label>
             <textarea
-              rows={3}
-              placeholder="Enter brief project summary..."
+              placeholder="Brief description of project deliverables and goals..."
               value={newProjectDesc}
               onChange={(e) => setNewProjectDesc(e.target.value)}
+              rows={3}
               style={{
                 width: '100%',
                 padding: '10px 14px',
                 borderRadius: '10px',
                 border: '1.5px solid #e2e8f0',
                 outline: 'none',
-                fontSize: '14px',
+                fontSize: '13.5px',
                 fontFamily: 'inherit',
-                boxSizing: 'border-box',
+              }}
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <div>
+              <label style={{ fontSize: '13.5px', fontWeight: 600, color: '#1e293b', marginBottom: '6px', display: 'block' }}>
+                Status
+              </label>
+              <select
+                value={newProjectStatus}
+                onChange={(e) => setNewProjectStatus(e.target.value as ProjectStatus)}
+                style={{
+                  width: '100%',
+                  padding: '11px 14px',
+                  borderRadius: '10px',
+                  border: '1.5px solid #e2e8f0',
+                  outline: 'none',
+                  fontSize: '14px',
+                  backgroundColor: '#ffffff',
+                }}
+              >
+                <option value="active">Active</option>
+                <option value="in_progress">In Progress</option>
+                <option value="on_hold">On Hold</option>
+                <option value="completed">Completed</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={{ fontSize: '13.5px', fontWeight: 600, color: '#1e293b', marginBottom: '6px', display: 'block' }}>
+                Due Date
+              </label>
+              <input
+                type="date"
+                value={newProjectDueDate}
+                onChange={(e) => setNewProjectDueDate(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px 14px',
+                  borderRadius: '10px',
+                  border: '1.5px solid #e2e8f0',
+                  outline: 'none',
+                  fontSize: '14px',
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Member Selection Checkboxes */}
+          {allUsers.length > 0 && (
+            <div>
+              <label style={{ fontSize: '13.5px', fontWeight: 600, color: '#1e293b', marginBottom: '8px', display: 'block' }}>
+                Assign Project Members
+              </label>
+              <div
+                style={{
+                  maxHeight: '130px',
+                  overflowY: 'auto',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '10px',
+                  padding: '8px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
+                }}
+              >
+                {allUsers.map((u) => (
+                  <label
+                    key={u.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      padding: '6px 8px',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      backgroundColor: selectedMemberIds.includes(u.id) ? '#f0fdf4' : 'transparent',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedMemberIds.includes(u.id)}
+                      onChange={() => toggleMemberSelection(u.id)}
+                      style={{ accentColor: '#4f46e5', width: '15px', height: '15px' }}
+                    />
+                    <span style={{ fontWeight: 600, color: '#1e293b' }}>{u.fullName}</span>
+                    <span style={{ color: '#64748b', fontSize: '12px' }}>({u.email})</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
+            <Button variant="secondary" onClick={() => setIsModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" isLoading={isSubmitting}>
+              Create Project
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Modal: Edit Project */}
+      <Modal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        title="Edit Project"
+        subtitle="Update project settings."
+      >
+        <form onSubmit={handleUpdateProject} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <Input
+            label="Project Name"
+            required
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+          />
+
+          <div>
+            <label style={{ fontSize: '13.5px', fontWeight: 600, color: '#1e293b', marginBottom: '6px', display: 'block' }}>
+              Description
+            </label>
+            <textarea
+              value={editDesc}
+              onChange={(e) => setEditDesc(e.target.value)}
+              rows={3}
+              style={{
+                width: '100%',
+                padding: '10px 14px',
+                borderRadius: '10px',
+                border: '1.5px solid #e2e8f0',
+                outline: 'none',
+                fontSize: '13.5px',
+                fontFamily: 'inherit',
               }}
             />
           </div>
@@ -542,8 +708,8 @@ export const ProjectsPage: React.FC = () => {
               Status
             </label>
             <select
-              value={newProjectStatus}
-              onChange={(e) => setNewProjectStatus(e.target.value as ProjectStatus)}
+              value={editStatus}
+              onChange={(e) => setEditStatus(e.target.value as ProjectStatus)}
               style={{
                 width: '100%',
                 padding: '11px 14px',
@@ -557,15 +723,16 @@ export const ProjectsPage: React.FC = () => {
               <option value="active">Active</option>
               <option value="in_progress">In Progress</option>
               <option value="on_hold">On Hold</option>
+              <option value="completed">Completed</option>
             </select>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
-            <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
+            <Button variant="secondary" onClick={() => setIsEditModalOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" variant="primary">
-              Create Project
+            <Button type="submit" variant="primary" isLoading={isSubmitting}>
+              Save Changes
             </Button>
           </div>
         </form>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Bell,
   CheckCheck,
@@ -12,9 +12,11 @@ import {
 import { useNotificationStore } from '../../stores/notificationStore';
 import { Button } from '../../components/common/Button';
 import { Modal } from '../../components/common/Modal';
+import { api } from '../../services/api';
 
 export const NotificationsPage: React.FC = () => {
-  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotificationStore();
+  const { notifications, unreadCount, setNotifications, markAsRead, markAllAsRead } =
+    useNotificationStore();
   const [activeFilter, setActiveFilter] = useState<'All' | 'Unread' | 'Project' | 'Task'>('All');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
@@ -24,6 +26,37 @@ export const NotificationsPage: React.FC = () => {
   const [mentions, setMentions] = useState(true);
   const [emailNotifs, setEmailNotifs] = useState(true);
   const [inAppNotifs, setInAppNotifs] = useState(true);
+
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      try {
+        const data: any = await api.get('/notifications');
+        const list = Array.isArray(data) ? data : data?.notifications || [];
+        setNotifications(list);
+      } catch (err) {
+        console.error('Failed to load notifications:', err);
+      }
+    };
+    fetchNotifications();
+  }, [setNotifications]);
+
+  const handleMarkAsRead = async (id: string) => {
+    markAsRead(id);
+    try {
+      await api.patch(`/notifications/${id}/read`);
+    } catch (err) {
+      console.warn('Failed to mark notification as read on backend', err);
+    }
+  };
+
+  const handleMarkAllAsRead = async () => {
+    markAllAsRead();
+    try {
+      await api.patch('/notifications/read-all');
+    } catch (err) {
+      console.warn('Failed to mark all as read on backend', err);
+    }
+  };
 
   const filtered = notifications.filter((n) => {
     if (activeFilter === 'Unread') return !n.isRead;
@@ -67,7 +100,7 @@ export const NotificationsPage: React.FC = () => {
           <Button
             variant="outline"
             icon={<CheckCheck size={16} />}
-            onClick={() => markAllAsRead()}
+            onClick={() => handleMarkAllAsRead()}
           >
             Mark all as read
           </Button>
@@ -126,7 +159,7 @@ export const NotificationsPage: React.FC = () => {
             filtered.map((item) => (
               <div
                 key={item.id}
-                onClick={() => markAsRead(item.id)}
+                onClick={() => handleMarkAsRead(item.id)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',

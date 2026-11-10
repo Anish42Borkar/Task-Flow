@@ -17,3 +17,9 @@ export const rolePermissions = pgTable('role_permissions', {
   canEdit: boolean('can_edit').default(false).notNull(),
   canDelete: boolean('can_delete').default(false).notNull(),
 });
+
+export type Role = typeof roles.$inferSelect;
+export type NewRole = typeof roles.$inferInsert;
+export type RolePermission = typeof rolePermissions.$inferSelect;
+export type NewRolePermission = typeof rolePermissions.$inferInsert;
+

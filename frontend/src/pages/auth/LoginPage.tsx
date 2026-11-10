@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, Eye, EyeOff, Zap, Users, BarChart3, Check } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { Button } from '../../components/common/Button';
+import { api } from '../../services/api';
 
 export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('anish.borkar@example.com');
@@ -15,30 +16,28 @@ export const LoginPage: React.FC = () => {
   const { setAuth } = useAuthStore();
   const navigate = useNavigate();
 
-  const handleLogin = async (e?: React.FormEvent) => {
+  const handleLogin = async (e?: React.FormEvent, overrideEmail?: string, overridePassword?: string) => {
     if (e) e.preventDefault();
     setError(null);
     setLoading(true);
 
-    try {
-      // Direct login simulation or API call
-      const isAdmin = email.toLowerCase().includes('admin') || email.toLowerCase().includes('anish');
-      const mockUser = {
-        id: isAdmin ? 'admin-uuid-1' : 'user-uuid-1',
-        fullName: isAdmin ? 'Anish Borkar' : 'Rahul Kumar',
-        email,
-        role: isAdmin ? ('admin' as const) : ('user' as const),
-        department: 'IT',
-        phone: '+91 98765 43210',
-        isActive: true,
-        joinedOn: '01 Nov 2026',
-        lastLogin: new Date().toISOString(),
-      };
+    const loginEmail = overrideEmail || email;
+    const loginPassword = overridePassword || password;
 
-      setAuth(mockUser, 'mock_jwt_access_token');
-      navigate('/dashboard');
+    try {
+      const res: any = await api.post('/auth/login', {
+        email: loginEmail,
+        password: loginPassword,
+      });
+
+      if (res?.accessToken && res?.user) {
+        setAuth(res.user, res.accessToken);
+        navigate('/dashboard');
+      } else {
+        throw new Error('Invalid response from server');
+      }
     } catch (err: any) {
-      setError(err.message || 'Login failed');
+      setError(err.message || 'Login failed. Please check your credentials.');
     } finally {
       setLoading(false);
     }
@@ -46,13 +45,18 @@ export const LoginPage: React.FC = () => {
 
   const loginAs = (role: 'admin' | 'user') => {
     if (role === 'admin') {
-      setEmail('anish.borkar@example.com');
-      setPassword('AdminPassword123!');
+      const e = 'anish.borkar@example.com';
+      const p = 'Password123!';
+      setEmail(e);
+      setPassword(p);
+      handleLogin(undefined, e, p);
     } else {
-      setEmail('rahul.kumar@example.com');
-      setPassword('UserPassword123!');
+      const e = 'rahul@taskflow.com';
+      const p = 'Password123!';
+      setEmail(e);
+      setPassword(p);
+      handleLogin(undefined, e, p);
     }
-    setTimeout(() => handleLogin(), 100);
   };
 
   return (

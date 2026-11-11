@@ -1,5 +1,6 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { AppLayout } from '../layouts/AppLayout';
 import { LoginPage } from '../pages/auth/LoginPage';
@@ -13,13 +14,36 @@ import { SettingsPage } from '../pages/settings/SettingsPage';
 import { MyProfilePage } from '../pages/profile/MyProfilePage';
 
 export const AppRoutes: React.FC = () => {
-  const { isAuthenticated, user } = useAuthStore();
+  const { isAuthenticated, isLoading, user } = useAuthStore();
   const isAdmin = user?.role === 'admin';
+
+  if (isLoading) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          minHeight: '100vh',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: '#f8fafc',
+          color: '#4f46e5',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 600 }}>
+          <Loader2 size={24} className="spin-animate" />
+          <span>Restoring session...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Routes>
       {/* Public Route */}
-      <Route path="/login" element={<LoginPage />} />
+      <Route
+        path="/login"
+        element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />}
+      />
 
       {/* Main Layout Protected Routes */}
       <Route

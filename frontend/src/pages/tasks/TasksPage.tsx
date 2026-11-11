@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Search,
   Plus,
@@ -11,6 +12,7 @@ import {
   AlertCircle,
   Loader2,
   Filter,
+  X,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { useNotificationStore } from '../../stores/notificationStore';
@@ -33,14 +35,26 @@ export const TasksPage: React.FC = () => {
   const { user } = useAuthStore();
   const { addToast } = useNotificationStore();
   const isAdmin = user?.role === 'admin';
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const urlProjectId = searchParams.get('projectId') || searchParams.get('project');
 
   const [projects, setProjects] = useState<LiveProject[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'All' | 'To Do' | 'In Progress' | 'Completed'>('All');
-  const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(urlProjectId || 'all');
   const [search, setSearch] = useState('');
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+
+  // Sync selectedProjectId if URL params change
+  useEffect(() => {
+    const pId = searchParams.get('projectId') || searchParams.get('project') || 'all';
+    setSelectedProjectId(pId);
+    if (pId !== 'all') {
+      setCreateProjectId(pId);
+    }
+  }, [searchParams]);
 
   // Create Task Modal state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -206,6 +220,17 @@ export const TasksPage: React.FC = () => {
       addToast('Error', err.message || 'Failed to create task', 'error');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // Handle Project Filter Change
+  const handleProjectSelect = (projectId: string) => {
+    setSelectedProjectId(projectId);
+    if (projectId === 'all') {
+      setSearchParams({});
+    } else {
+      setSearchParams({ projectId });
+      setCreateProjectId(projectId);
     }
   };
 
@@ -376,7 +401,12 @@ export const TasksPage: React.FC = () => {
           <Button
             variant="primary"
             icon={<Plus size={16} />}
-            onClick={() => setIsCreateModalOpen(true)}
+            onClick={() => {
+              if (selectedProjectId !== 'all') {
+                setCreateProjectId(selectedProjectId);
+              }
+              setIsCreateModalOpen(true);
+            }}
           >
             Create Task
           </Button>
@@ -393,6 +423,54 @@ export const TasksPage: React.FC = () => {
           overflow: 'hidden',
         }}
       >
+        {/* Active Project Filter Notice Banner */}
+        {selectedProjectId !== 'all' && (
+          <div
+            style={{
+              padding: '12px 24px',
+              backgroundColor: '#eef2ff',
+              borderBottom: '1px solid #e0e7ff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: '13px',
+              color: '#3730a3',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>Filtering tasks for:</span>
+              <span
+                style={{
+                  fontWeight: 700,
+                  backgroundColor: '#ffffff',
+                  padding: '3px 10px',
+                  borderRadius: '6px',
+                  border: '1px solid #c7d2fe',
+                  color: '#4338ca',
+                }}
+              >
+                {projects.find((p) => p.id === selectedProjectId)?.name || 'Selected Project'}
+              </span>
+            </div>
+            <button
+              onClick={() => handleProjectSelect('all')}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#4f46e5',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                fontSize: '12.5px',
+              }}
+            >
+              <X size={14} /> Clear Filter (View All Projects)
+            </button>
+          </div>
+        )}
+
         {/* Filter Pills Bar & Project Selector */}
         <div
           style={{
@@ -433,7 +511,7 @@ export const TasksPage: React.FC = () => {
             <Filter size={15} color="#64748b" />
             <select
               value={selectedProjectId}
-              onChange={(e) => setSelectedProjectId(e.target.value)}
+              onChange={(e) => handleProjectSelect(e.target.value)}
               style={{
                 padding: '8px 14px',
                 borderRadius: '10px',

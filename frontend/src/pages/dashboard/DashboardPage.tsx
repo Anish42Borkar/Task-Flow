@@ -49,7 +49,8 @@ export const DashboardPage: React.FC = () => {
         if (isAdmin) {
           try {
             const userRes: any = await api.get('/users?limit=1');
-            setTotalUsersCount(userRes?.total || 3);
+            const count = userRes?.meta?.total ?? userRes?.total ?? (Array.isArray(userRes?.data) ? userRes.data.length : 3);
+            setTotalUsersCount(count);
           } catch {
             setTotalUsersCount(3);
           }
@@ -298,7 +299,12 @@ export const DashboardPage: React.FC = () => {
             >
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {projects.slice(0, 4).map((p) => (
-                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div
+                    key={p.id}
+                    onClick={() => navigate(`/tasks?projectId=${p.id}`)}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+                    title={`View tasks for ${p.name}`}
+                  >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: '#eef2ff', color: '#4f46e5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <Folder size={18} />
@@ -462,7 +468,12 @@ export const DashboardPage: React.FC = () => {
             >
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {projects.map((p) => (
-                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div
+                    key={p.id}
+                    onClick={() => navigate(`/tasks?projectId=${p.id}`)}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+                    title={`View tasks for ${p.name}`}
+                  >
                     <div>
                       <div style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a' }}>{p.name}</div>
                       <div style={{ fontSize: '12px', color: '#64748b' }}>{p.tasksCount || 0} tasks total</div>

@@ -12,11 +12,28 @@ interface AuthState {
   initialize: () => void;
 }
 
+// Synchronously read stored session to prevent unauthenticated redirect on page reload
+const getStoredSession = () => {
+  try {
+    const token = localStorage.getItem('taskflow_token');
+    const storedUser = localStorage.getItem('taskflow_user');
+    if (token && storedUser) {
+      const user = JSON.parse(storedUser);
+      return { user, token, isAuthenticated: true, isLoading: false };
+    }
+  } catch (err) {
+    console.error('Error reading auth from localStorage:', err);
+  }
+  return { user: null, token: null, isAuthenticated: false, isLoading: false };
+};
+
+const initial = getStoredSession();
+
 export const useAuthStore = create<AuthState>((set) => ({
-  user: null,
-  token: null,
-  isAuthenticated: false,
-  isLoading: true,
+  user: initial.user,
+  token: initial.token,
+  isAuthenticated: initial.isAuthenticated,
+  isLoading: initial.isLoading,
 
   setAuth: (user: User, token: string) => {
     localStorage.setItem('taskflow_token', token);
@@ -36,18 +53,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   initialize: () => {
-    try {
-      const token = localStorage.getItem('taskflow_token');
-      const storedUser = localStorage.getItem('taskflow_user');
-      if (token && storedUser) {
-        const user = JSON.parse(storedUser);
-        set({ user, token, isAuthenticated: true, isLoading: false });
-      } else {
-        // Fallback default demo user if not logged in yet for testing UI
-        set({ user: null, token: null, isAuthenticated: false, isLoading: false });
-      }
-    } catch {
-      set({ user: null, token: null, isAuthenticated: false, isLoading: false });
-    }
+    const session = getStoredSession();
+    set(session);
   },
 }));

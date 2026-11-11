@@ -50,7 +50,11 @@ export const UserManagementPage: React.FC = () => {
         api.get('/roles'),
       ]);
 
-      const userList = usersRes?.users || (Array.isArray(usersRes) ? usersRes : []);
+      const rawUsers = usersRes?.data || usersRes?.users || (Array.isArray(usersRes) ? usersRes : []);
+      const userList = rawUsers.map((u: any) => ({
+        ...u,
+        role: u.role || u.roleId || 'user',
+      }));
       const roleList = Array.isArray(rolesRes) ? rolesRes : [];
 
       setUsers(userList);
@@ -70,10 +74,13 @@ export const UserManagementPage: React.FC = () => {
   }, [fetchData]);
 
   const filteredUsers = users.filter((u) => {
+    const fullName = (u.fullName || '').toLowerCase();
+    const email = (u.email || '').toLowerCase();
     const matchesSearch =
-      u.fullName.toLowerCase().includes(search.toLowerCase()) ||
-      u.email.toLowerCase().includes(search.toLowerCase());
-    const matchesRole = roleFilter === 'all' || u.role === roleFilter || (u as any).roleId === roleFilter;
+      fullName.includes(search.toLowerCase()) ||
+      email.includes(search.toLowerCase());
+    const userRole = (u.role || (u as any).roleId || '').toLowerCase();
+    const matchesRole = roleFilter === 'all' || userRole === roleFilter.toLowerCase();
     return matchesSearch && matchesRole;
   });
 

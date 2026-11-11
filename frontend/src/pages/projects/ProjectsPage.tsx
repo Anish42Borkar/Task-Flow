@@ -84,7 +84,7 @@ export const ProjectsPage: React.FC = () => {
     if (!isAdmin) return;
     try {
       const data: any = await api.get('/users?limit=50');
-      const list = data?.users || (Array.isArray(data) ? data : []);
+      const list = data?.data || data?.users || (Array.isArray(data) ? data : []);
       setAllUsers(list);
     } catch (err) {
       console.warn('Failed to load users for project members selection');
@@ -362,7 +362,7 @@ export const ProjectsPage: React.FC = () => {
                           </div>
                           <div>
                             <span
-                              onClick={() => navigate('/tasks')}
+                              onClick={() => navigate(`/tasks?projectId=${project.id}`)}
                               style={{ fontWeight: 700, color: '#0f172a', cursor: 'pointer' }}
                             >
                               {project.name}
@@ -494,7 +494,7 @@ export const ProjectsPage: React.FC = () => {
                       <td style={{ padding: '16px 20px', textAlign: 'center' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
                           <button
-                            onClick={() => navigate('/tasks')}
+                            onClick={() => navigate(`/tasks?projectId=${project.id}`)}
                             style={{ color: '#4f46e5', padding: '6px', borderRadius: '6px', border: 'none', background: 'transparent', cursor: 'pointer' }}
                             title="View Tasks"
                           >

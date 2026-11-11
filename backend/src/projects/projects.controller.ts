@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Delete,
   Param,
   Body,
@@ -42,9 +43,9 @@ export class ProjectsController {
   @Roles('admin')
   async create(
     @Body() dto: CreateProjectDto,
-    @CurrentUser('id') creatorId: string,
+    @CurrentUser() user: any,
   ) {
-    return this.projectsService.create(dto, creatorId);
+    return this.projectsService.create(dto, user.id, user);
   }
 
   @Put(':id')
@@ -53,8 +54,20 @@ export class ProjectsController {
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateProjectDto,
+    @CurrentUser() user: any,
   ) {
-    return this.projectsService.update(id, dto);
+    return this.projectsService.update(id, dto, user);
+  }
+
+  @Patch(':id')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  async patch(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateProjectDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.projectsService.update(id, dto, user);
   }
 
   @Delete(':id')
@@ -70,8 +83,20 @@ export class ProjectsController {
   async addMembers(
     @Param('id', ParseUUIDPipe) projectId: string,
     @Body() body: { userIds: string[] },
+    @CurrentUser() user: any,
   ) {
-    return this.projectsService.addMembers(projectId, body.userIds);
+    return this.projectsService.addMembers(projectId, body.userIds || [], user);
+  }
+
+  @Put(':id/members')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  async setMembers(
+    @Param('id', ParseUUIDPipe) projectId: string,
+    @Body() body: { userIds: string[] },
+    @CurrentUser() user: any,
+  ) {
+    return this.projectsService.setMembers(projectId, body.userIds || [], user);
   }
 
   @Delete(':id/members/:userId')
@@ -80,7 +105,8 @@ export class ProjectsController {
   async removeMember(
     @Param('id', ParseUUIDPipe) projectId: string,
     @Param('userId', ParseUUIDPipe) userId: string,
+    @CurrentUser() user: any,
   ) {
-    return this.projectsService.removeMember(projectId, userId);
+    return this.projectsService.removeMember(projectId, userId, user);
   }
 }

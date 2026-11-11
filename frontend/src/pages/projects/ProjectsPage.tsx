@@ -19,6 +19,9 @@ import {
   Star,
   Loader2,
   CheckCircle2,
+  UserPlus,
+  X,
+  Check,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { useNotificationStore } from '../../stores/notificationStore';
@@ -42,7 +45,7 @@ const COLORS = ['#8b5cf6', '#3b82f6', '#10b981', '#6366f1', '#0ea5e9', '#ec4899'
 
 export const ProjectsPage: React.FC = () => {
   const { user } = useAuthStore();
-  const { addToast } = useNotificationStore();
+  const { addToast, addNotification, fetchNotifications } = useNotificationStore();
   const navigate = useNavigate();
   const isAdmin = user?.role === 'admin';
 
@@ -59,6 +62,7 @@ export const ProjectsPage: React.FC = () => {
   const [newProjectStatus, setNewProjectStatus] = useState<ProjectStatus>('active');
   const [newProjectDueDate, setNewProjectDueDate] = useState('');
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
+  const [createMemberSearch, setCreateMemberSearch] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Edit Project Modal state
@@ -67,6 +71,15 @@ export const ProjectsPage: React.FC = () => {
   const [editName, setEditName] = useState('');
   const [editDesc, setEditDesc] = useState('');
   const [editStatus, setEditStatus] = useState<ProjectStatus>('active');
+  const [editMemberIds, setEditMemberIds] = useState<string[]>([]);
+  const [editMemberSearch, setEditMemberSearch] = useState('');
+
+  // Dedicated Manage Members Modal state
+  const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
+  const [activeProjectForMembers, setActiveProjectForMembers] = useState<Project | null>(null);
+  const [projectMemberIds, setProjectMemberIds] = useState<string[]>([]);
+  const [memberSearch, setMemberSearch] = useState('');
+  const [isSavingMembers, setIsSavingMembers] = useState(false);
 
   const fetchProjects = useCallback(async () => {
     try {
@@ -96,6 +109,15 @@ export const ProjectsPage: React.FC = () => {
     fetchUsers();
   }, [fetchProjects, fetchUsers]);
 
+  // Real-time project assigned listener
+  useEffect(() => {
+    const handleProjectAssigned = () => {
+      fetchProjects();
+    };
+    window.addEventListener('taskflow:project_assigned', handleProjectAssigned);
+    return () => window.removeEventListener('taskflow:project_assigned', handleProjectAssigned);
+  }, [fetchProjects]);
+
   const filteredProjects = projects.filter((p) => {
     const matchesSearch =
       p.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -118,12 +140,29 @@ export const ProjectsPage: React.FC = () => {
         memberIds: selectedMemberIds,
       });
 
+      if (selectedMemberIds.length > 0) {
+        const assignedUsers = allUsers.filter((u) => selectedMemberIds.includes(u.id));
+        const names = assignedUsers.map((u) => u.fullName).join(', ');
+        addNotification({
+          id: Math.random().toString(),
+          userId: user?.id || 'me',
+          title: 'Member Assigned to Project',
+          message: `Assigned ${names || 'team member'} to project "${newProjectName}".`,
+          type: 'project_assigned',
+          referenceId: undefined,
+          isRead: false,
+          createdAt: new Date().toISOString(),
+        });
+      }
+
       addToast('Success', `Project "${newProjectName}" created successfully`, 'success');
       setIsModalOpen(false);
       setNewProjectName('');
       setNewProjectDesc('');
       setSelectedMemberIds([]);
+      setCreateMemberSearch('');
       fetchProjects();
+      fetchNotifications();
     } catch (err: any) {
       addToast('Error', err.message || 'Failed to create project', 'error');
     } finally {
@@ -136,6 +175,8 @@ export const ProjectsPage: React.FC = () => {
     setEditName(project.name);
     setEditDesc(project.description || '');
     setEditStatus(project.status);
+    setEditMemberIds((project.members || []).map((m: any) => m.id));
+    setEditMemberSearch('');
     setIsEditModalOpen(true);
   };
 
@@ -145,11 +186,39 @@ export const ProjectsPage: React.FC = () => {
 
     try {
       setIsSubmitting(true);
-      await api.patch(`/projects/${editingProject.id}`, {
+      await api.put(`/projects/${editingProject.id}`, {
         name: editName.trim(),
         description: editDesc.trim() || undefined,
         status: editStatus,
       });
+
+      // Synchronize members if changed
+      const existingIds = (editingProject.members || []).map((m: any) => m.id);
+      const toAdd = editMemberIds.filter((id) => !existingIds.includes(id));
+      const toRemove = existingIds.filter(
+        (id) => !editMemberIds.includes(id) && id !== editingProject.createdBy,
+      );
+
+      if (toAdd.length > 0) {
+        await api.post(`/projects/${editingProject.id}/members`, { userIds: toAdd });
+        const assignedUsers = allUsers.filter((u) => toAdd.includes(u.id));
+        const names = assignedUsers.map((u) => u.fullName).join(', ');
+        addNotification({
+          id: Math.random().toString(),
+          userId: user?.id || 'me',
+          title: 'Member Assigned to Project',
+          message: `Assigned ${names || 'team member'} to project "${editingProject.name}".`,
+          type: 'project_assigned',
+          referenceId: editingProject.id,
+          isRead: false,
+          createdAt: new Date().toISOString(),
+        });
+      }
+      if (toRemove.length > 0) {
+        for (const uId of toRemove) {
+          await api.delete(`/projects/${editingProject.id}/members/${uId}`);
+        }
+      }
 
       addToast('Success', `Project updated successfully`, 'success');
       setIsEditModalOpen(false);
@@ -159,6 +228,100 @@ export const ProjectsPage: React.FC = () => {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const openMembersModal = (project: Project) => {
+    setActiveProjectForMembers(project);
+    const existingIds = (project.members || []).map((m: any) => m.id);
+    setProjectMemberIds(existingIds);
+    setMemberSearch('');
+    setIsMembersModalOpen(true);
+  };
+
+  const handleSaveMembers = async () => {
+    if (!activeProjectForMembers) return;
+    try {
+      setIsSavingMembers(true);
+      const existingIds = (activeProjectForMembers.members || []).map((m: any) => m.id);
+      const toAdd = projectMemberIds.filter((id) => !existingIds.includes(id));
+      const toRemove = existingIds.filter(
+        (id) => !projectMemberIds.includes(id) && id !== activeProjectForMembers.createdBy,
+      );
+
+      // Add newly assigned members
+      if (toAdd.length > 0) {
+        await api.post(`/projects/${activeProjectForMembers.id}/members`, {
+          userIds: toAdd,
+        });
+
+        const assignedUsers = allUsers.filter((u) => toAdd.includes(u.id));
+        const names = assignedUsers.map((u) => u.fullName).join(', ');
+
+        // Trigger real-time notification with toast alert
+        addNotification({
+          id: Math.random().toString(),
+          userId: user?.id || 'me',
+          title: 'Member Assigned to Project',
+          message: `Assigned ${names || 'team member'} to project "${activeProjectForMembers.name}".`,
+          type: 'project_assigned',
+          referenceId: activeProjectForMembers.id,
+          isRead: false,
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      // Remove unassigned members
+      if (toRemove.length > 0) {
+        for (const uId of toRemove) {
+          await api.delete(`/projects/${activeProjectForMembers.id}/members/${uId}`);
+        }
+
+        const removedUsers = allUsers.filter((u) => toRemove.includes(u.id));
+        const names = removedUsers.map((u) => u.fullName).join(', ');
+
+        addNotification({
+          id: Math.random().toString(),
+          userId: user?.id || 'me',
+          title: 'Member Removed from Project',
+          message: `Removed ${names || 'team member'} from project "${activeProjectForMembers.name}".`,
+          type: 'project_updated',
+          referenceId: activeProjectForMembers.id,
+          isRead: false,
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      if (toAdd.length === 0 && toRemove.length === 0) {
+        addToast('Information', 'No changes made to project members.', 'info');
+      } else {
+        addToast(
+          'Success',
+          `Project members updated successfully for "${activeProjectForMembers.name}"`,
+          'success',
+        );
+      }
+
+      setIsMembersModalOpen(false);
+      setActiveProjectForMembers(null);
+      fetchProjects();
+      fetchNotifications();
+    } catch (err: any) {
+      addToast('Error', err.message || 'Failed to update project members', 'error');
+    } finally {
+      setIsSavingMembers(false);
+    }
+  };
+
+  const toggleProjectMember = (userId: string) => {
+    setProjectMemberIds((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId],
+    );
+  };
+
+  const toggleEditMemberSelection = (userId: string) => {
+    setEditMemberIds((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId],
+    );
   };
 
   const handleDeleteProject = async (id: string, name: string) => {
@@ -380,57 +543,87 @@ export const ProjectsPage: React.FC = () => {
 
                       {/* Members Avatar Pile */}
                       <td style={{ padding: '16px 20px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                          {project.members && project.members.length > 0 ? (
-                            project.members.slice(0, 3).map((m: any, mIdx: number) => {
-                              const initials = m.fullName
-                                ? m.fullName.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()
-                                : 'U';
-                              return (
-                                <div
-                                  key={m.id || mIdx}
-                                  title={m.fullName}
-                                  style={{
-                                    width: '28px',
-                                    height: '28px',
-                                    borderRadius: '50%',
-                                    backgroundColor: COLORS[mIdx % COLORS.length],
-                                    color: '#ffffff',
-                                    fontSize: '11px',
-                                    fontWeight: 700,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    border: '2px solid #ffffff',
-                                    marginLeft: mIdx > 0 ? '-8px' : '0',
-                                  }}
-                                >
-                                  {initials}
-                                </div>
-                              );
-                            })
-                          ) : (
-                            <span style={{ color: '#94a3b8', fontSize: '12px' }}>None</span>
-                          )}
-                          {project.members && project.members.length > 3 && (
-                            <div
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div
+                            style={{ display: 'flex', alignItems: 'center', cursor: isAdmin ? 'pointer' : 'default' }}
+                            onClick={() => isAdmin && openMembersModal(project)}
+                            title={isAdmin ? 'Click to assign or manage members' : undefined}
+                          >
+                            {project.members && project.members.length > 0 ? (
+                              project.members.slice(0, 3).map((m: any, mIdx: number) => {
+                                const initials = m.fullName
+                                  ? m.fullName.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()
+                                  : 'U';
+                                return (
+                                  <div
+                                    key={m.id || mIdx}
+                                    title={m.fullName}
+                                    style={{
+                                      width: '28px',
+                                      height: '28px',
+                                      borderRadius: '50%',
+                                      backgroundColor: COLORS[mIdx % COLORS.length],
+                                      color: '#ffffff',
+                                      fontSize: '11px',
+                                      fontWeight: 700,
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      border: '2px solid #ffffff',
+                                      marginLeft: mIdx > 0 ? '-8px' : '0',
+                                    }}
+                                  >
+                                    {initials}
+                                  </div>
+                                );
+                              })
+                            ) : (
+                              <span style={{ color: '#94a3b8', fontSize: '12px' }}>None</span>
+                            )}
+                            {project.members && project.members.length > 3 && (
+                              <div
+                                style={{
+                                  width: '28px',
+                                  height: '28px',
+                                  borderRadius: '50%',
+                                  backgroundColor: '#e2e8f0',
+                                  color: '#475569',
+                                  fontSize: '10px',
+                                  fontWeight: 700,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  border: '2px solid #ffffff',
+                                  marginLeft: '-8px',
+                                }}
+                              >
+                                +{project.members.length - 3}
+                              </div>
+                            )}
+                          </div>
+
+                          {isAdmin && (
+                            <button
+                              onClick={() => openMembersModal(project)}
                               style={{
-                                width: '28px',
-                                height: '28px',
-                                borderRadius: '50%',
-                                backgroundColor: '#e2e8f0',
-                                color: '#475569',
-                                fontSize: '10px',
-                                fontWeight: 700,
-                                display: 'flex',
+                                display: 'inline-flex',
                                 alignItems: 'center',
-                                justifyContent: 'center',
-                                border: '2px solid #ffffff',
-                                marginLeft: '-8px',
+                                gap: '4px',
+                                padding: '3px 8px',
+                                borderRadius: '6px',
+                                fontSize: '11.5px',
+                                fontWeight: 600,
+                                color: '#4f46e5',
+                                backgroundColor: '#eef2ff',
+                                border: '1px solid #c7d2fe',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease',
                               }}
+                              title="Assign members to this project"
                             >
-                              +{project.members.length - 3}
-                            </div>
+                              <UserPlus size={12} />
+                              Assign
+                            </button>
                           )}
                         </div>
                       </td>
@@ -502,6 +695,13 @@ export const ProjectsPage: React.FC = () => {
                           </button>
                           {isAdmin && (
                             <>
+                              <button
+                                onClick={() => openMembersModal(project)}
+                                style={{ color: '#4f46e5', padding: '6px', borderRadius: '6px', border: 'none', background: 'transparent', cursor: 'pointer' }}
+                                title="Assign Members to Project"
+                              >
+                                <UserPlus size={16} />
+                              </button>
                               <button
                                 onClick={() => openEditModal(project)}
                                 style={{ color: '#64748b', padding: '6px', borderRadius: '6px', border: 'none', background: 'transparent', cursor: 'pointer' }}
@@ -611,12 +811,54 @@ export const ProjectsPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Member Selection Checkboxes */}
+          {/* Member Selection Checkboxes with Search */}
           {allUsers.length > 0 && (
             <div>
-              <label style={{ fontSize: '13.5px', fontWeight: 600, color: '#1e293b', marginBottom: '8px', display: 'block' }}>
-                Assign Project Members
-              </label>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <label style={{ fontSize: '13.5px', fontWeight: 600, color: '#1e293b' }}>
+                  Assign Project Members ({selectedMemberIds.length})
+                </label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMemberIds(allUsers.map((u) => u.id))}
+                    style={{ fontSize: '11px', color: '#4f46e5', fontWeight: 600, border: 'none', background: 'transparent', cursor: 'pointer' }}
+                  >
+                    Select All
+                  </button>
+                  <span style={{ color: '#cbd5e1' }}>|</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMemberIds([])}
+                    style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, border: 'none', background: 'transparent', cursor: 'pointer' }}
+                  >
+                    Clear All
+                  </button>
+                </div>
+              </div>
+
+              {/* Quick Search */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  padding: '6px 10px',
+                  marginBottom: '8px',
+                }}
+              >
+                <Search size={14} color="#94a3b8" style={{ marginRight: '6px' }} />
+                <input
+                  type="text"
+                  placeholder="Filter users to assign..."
+                  value={createMemberSearch}
+                  onChange={(e) => setCreateMemberSearch(e.target.value)}
+                  style={{ border: 'none', outline: 'none', fontSize: '12.5px', width: '100%' }}
+                />
+              </div>
+
               <div
                 style={{
                   maxHeight: '130px',
@@ -629,30 +871,41 @@ export const ProjectsPage: React.FC = () => {
                   gap: '6px',
                 }}
               >
-                {allUsers.map((u) => (
-                  <label
-                    key={u.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      padding: '6px 8px',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      fontSize: '13px',
-                      backgroundColor: selectedMemberIds.includes(u.id) ? '#f0fdf4' : 'transparent',
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedMemberIds.includes(u.id)}
-                      onChange={() => toggleMemberSelection(u.id)}
-                      style={{ accentColor: '#4f46e5', width: '15px', height: '15px' }}
-                    />
-                    <span style={{ fontWeight: 600, color: '#1e293b' }}>{u.fullName}</span>
-                    <span style={{ color: '#64748b', fontSize: '12px' }}>({u.email})</span>
-                  </label>
-                ))}
+                {allUsers
+                  .filter(
+                    (u) =>
+                      u.fullName?.toLowerCase().includes(createMemberSearch.toLowerCase()) ||
+                      u.email?.toLowerCase().includes(createMemberSearch.toLowerCase())
+                  )
+                  .map((u) => (
+                    <label
+                      key={u.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '6px 8px',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        backgroundColor: selectedMemberIds.includes(u.id) ? '#f0fdf4' : 'transparent',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedMemberIds.includes(u.id)}
+                          onChange={() => toggleMemberSelection(u.id)}
+                          style={{ accentColor: '#4f46e5', width: '15px', height: '15px', cursor: 'pointer' }}
+                        />
+                        <span style={{ fontWeight: 600, color: '#1e293b' }}>{u.fullName}</span>
+                        <span style={{ color: '#64748b', fontSize: '12px' }}>({u.email})</span>
+                      </div>
+                      <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'capitalize' }}>
+                        {u.role || 'Member'}
+                      </span>
+                    </label>
+                  ))}
               </div>
             </div>
           )}
@@ -673,7 +926,7 @@ export const ProjectsPage: React.FC = () => {
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
         title="Edit Project"
-        subtitle="Update project settings."
+        subtitle="Update project settings and assign team members."
       >
         <form onSubmit={handleUpdateProject} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <Input
@@ -727,6 +980,108 @@ export const ProjectsPage: React.FC = () => {
             </select>
           </div>
 
+          {/* Member Assignment in Edit Modal */}
+          {allUsers.length > 0 && (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <label style={{ fontSize: '13.5px', fontWeight: 600, color: '#1e293b' }}>
+                  Project Members ({editMemberIds.length})
+                </label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setEditMemberIds(allUsers.map((u) => u.id))}
+                    style={{ fontSize: '11px', color: '#4f46e5', fontWeight: 600, border: 'none', background: 'transparent', cursor: 'pointer' }}
+                  >
+                    Select All
+                  </button>
+                  <span style={{ color: '#cbd5e1' }}>|</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const creatorId = editingProject?.createdBy;
+                      setEditMemberIds(creatorId ? [creatorId] : []);
+                    }}
+                    style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, border: 'none', background: 'transparent', cursor: 'pointer' }}
+                  >
+                    Clear All
+                  </button>
+                </div>
+              </div>
+
+              {/* Filter */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  padding: '6px 10px',
+                  marginBottom: '8px',
+                }}
+              >
+                <Search size={14} color="#94a3b8" style={{ marginRight: '6px' }} />
+                <input
+                  type="text"
+                  placeholder="Filter users..."
+                  value={editMemberSearch}
+                  onChange={(e) => setEditMemberSearch(e.target.value)}
+                  style={{ border: 'none', outline: 'none', fontSize: '12.5px', width: '100%' }}
+                />
+              </div>
+
+              <div
+                style={{
+                  maxHeight: '140px',
+                  overflowY: 'auto',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '10px',
+                  padding: '8px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
+                }}
+              >
+                {allUsers
+                  .filter(
+                    (u) =>
+                      u.fullName?.toLowerCase().includes(editMemberSearch.toLowerCase()) ||
+                      u.email?.toLowerCase().includes(editMemberSearch.toLowerCase())
+                  )
+                  .map((u) => (
+                    <label
+                      key={u.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '6px 8px',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        backgroundColor: editMemberIds.includes(u.id) ? '#f0fdf4' : 'transparent',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input
+                          type="checkbox"
+                          checked={editMemberIds.includes(u.id)}
+                          onChange={() => toggleEditMemberSelection(u.id)}
+                          style={{ accentColor: '#4f46e5', width: '15px', height: '15px', cursor: 'pointer' }}
+                        />
+                        <span style={{ fontWeight: 600, color: '#1e293b' }}>{u.fullName}</span>
+                        <span style={{ color: '#64748b', fontSize: '12px' }}>({u.email})</span>
+                      </div>
+                      <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'capitalize' }}>
+                        {u.role || 'Member'}
+                      </span>
+                    </label>
+                  ))}
+              </div>
+            </div>
+          )}
+
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
             <Button variant="secondary" onClick={() => setIsEditModalOpen(false)}>
               Cancel
@@ -736,6 +1091,254 @@ export const ProjectsPage: React.FC = () => {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Modal: Manage Project Members (Admin Dedicated) */}
+      <Modal
+        isOpen={isMembersModalOpen}
+        onClose={() => setIsMembersModalOpen(false)}
+        title={`Assign Members: ${activeProjectForMembers?.name || 'Project'}`}
+        subtitle="Assign users to this project and collaborate with real-time updates."
+        maxWidth="580px"
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Currently Assigned Summary */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <label style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a' }}>
+                Assigned Team Members ({projectMemberIds.length})
+              </label>
+              <span style={{ fontSize: '11.5px', color: '#64748b' }}>
+                Users assigned will receive real-time notifications
+              </span>
+            </div>
+
+            {/* Assigned Members Pills */}
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '8px',
+                padding: '10px 12px',
+                backgroundColor: '#f8fafc',
+                borderRadius: '10px',
+                border: '1px solid #e2e8f0',
+                minHeight: '44px',
+                alignItems: 'center',
+              }}
+            >
+              {projectMemberIds.length === 0 ? (
+                <span style={{ fontSize: '12.5px', color: '#94a3b8' }}>
+                  No members assigned yet. Select users from below to assign them.
+                </span>
+              ) : (
+                projectMemberIds.map((userId) => {
+                  const u = allUsers.find((usr) => usr.id === userId);
+                  const name = u?.fullName || 'User';
+                  const isCreator = activeProjectForMembers?.createdBy === userId;
+
+                  return (
+                    <span
+                      key={userId}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '4px 10px',
+                        backgroundColor: '#ffffff',
+                        border: '1px solid #c7d2fe',
+                        borderRadius: '9999px',
+                        fontSize: '12.5px',
+                        fontWeight: 600,
+                        color: '#3730a3',
+                      }}
+                    >
+                      <span>{name}</span>
+                      {isCreator ? (
+                        <span style={{ fontSize: '10px', color: '#6366f1', fontWeight: 700 }}>
+                          (Lead)
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => toggleProjectMember(userId)}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: '#ef4444',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            padding: 0,
+                          }}
+                          title="Remove from project"
+                        >
+                          <X size={13} />
+                        </button>
+                      )}
+                    </span>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          {/* Search and User Selection List */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <label style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a' }}>
+                All Available Users ({allUsers.length})
+              </label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setProjectMemberIds(allUsers.map((u) => u.id))}
+                  style={{
+                    fontSize: '11.5px',
+                    color: '#4f46e5',
+                    fontWeight: 600,
+                    border: 'none',
+                    background: 'transparent',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Select All
+                </button>
+                <span style={{ color: '#cbd5e1' }}>|</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const creatorId = activeProjectForMembers?.createdBy;
+                    setProjectMemberIds(creatorId ? [creatorId] : []);
+                  }}
+                  style={{
+                    fontSize: '11.5px',
+                    color: '#64748b',
+                    fontWeight: 600,
+                    border: 'none',
+                    background: 'transparent',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Clear All
+                </button>
+              </div>
+            </div>
+
+            {/* Search Input */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                backgroundColor: '#ffffff',
+                border: '1px solid #e2e8f0',
+                borderRadius: '8px',
+                padding: '6px 12px',
+                marginBottom: '10px',
+              }}
+            >
+              <Search size={14} color="#94a3b8" style={{ marginRight: '8px' }} />
+              <input
+                type="text"
+                placeholder="Search user by name, email, or department..."
+                value={memberSearch}
+                onChange={(e) => setMemberSearch(e.target.value)}
+                style={{
+                  border: 'none',
+                  outline: 'none',
+                  fontSize: '13px',
+                  width: '100%',
+                }}
+              />
+            </div>
+
+            {/* Users Checkbox List */}
+            <div
+              style={{
+                maxHeight: '220px',
+                overflowY: 'auto',
+                border: '1px solid #e2e8f0',
+                borderRadius: '10px',
+                padding: '6px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+              }}
+            >
+              {allUsers
+                .filter(
+                  (u) =>
+                    u.fullName?.toLowerCase().includes(memberSearch.toLowerCase()) ||
+                    u.email?.toLowerCase().includes(memberSearch.toLowerCase()) ||
+                    u.department?.toLowerCase().includes(memberSearch.toLowerCase())
+                )
+                .map((u) => {
+                  const isSelected = projectMemberIds.includes(u.id);
+                  const isCreator = activeProjectForMembers?.createdBy === u.id;
+
+                  return (
+                    <label
+                      key={u.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        cursor: isCreator ? 'default' : 'pointer',
+                        fontSize: '13px',
+                        backgroundColor: isSelected ? '#f5f3ff' : 'transparent',
+                        border: isSelected ? '1px solid #ddd6fe' : '1px solid transparent',
+                        transition: 'background-color 0.15s ease',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          disabled={isCreator}
+                          onChange={() => !isCreator && toggleProjectMember(u.id)}
+                          style={{ accentColor: '#4f46e5', width: '16px', height: '16px', cursor: 'pointer' }}
+                        />
+                        <div>
+                          <div style={{ fontWeight: 600, color: '#1e293b' }}>
+                            {u.fullName} {isCreator && <span style={{ color: '#6366f1', fontSize: '11px' }}>(Project Lead)</span>}
+                          </div>
+                          <div style={{ color: '#64748b', fontSize: '11.5px' }}>
+                            {u.email} {u.department ? `• ${u.department}` : ''}
+                          </div>
+                        </div>
+                      </div>
+
+                      <span
+                        style={{
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          padding: '2px 8px',
+                          borderRadius: '6px',
+                          backgroundColor: isSelected ? '#ede9fe' : '#f1f5f9',
+                          color: isSelected ? '#6d28d9' : '#64748b',
+                          textTransform: 'capitalize',
+                        }}
+                      >
+                        {u.role || 'Member'}
+                      </span>
+                    </label>
+                  );
+                })}
+            </div>
+          </div>
+
+          {/* Modal Actions */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '8px' }}>
+            <Button variant="secondary" onClick={() => setIsMembersModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={handleSaveMembers} isLoading={isSavingMembers}>
+              Save Assignments
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

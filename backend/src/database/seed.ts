@@ -205,6 +205,69 @@ async function seed() {
           createdBy: adminId,
         }).onConflictDoNothing();
       }
+
+      // 8. Seed Notifications
+      console.log('Creating initial notifications...');
+      const notifsToInsert: schema.NewNotification[] = [];
+      if (adminId) {
+        notifsToInsert.push(
+          {
+            userId: adminId,
+            title: 'Welcome to TaskFlow Admin',
+            message: 'You have full administrative privileges to manage projects, tasks, and users.',
+            type: 'info',
+            isRead: false,
+            createdAt: new Date(Date.now() - 1000 * 60 * 30),
+          },
+          {
+            userId: adminId,
+            title: 'New project workspace',
+            message: 'Project "Website Redesign" was successfully established.',
+            type: 'project_updated',
+            isRead: false,
+            createdAt: new Date(Date.now() - 1000 * 60 * 60),
+          },
+          {
+            userId: adminId,
+            title: 'Task in progress',
+            message: 'Rahul Kumar began working on "Update project documentation".',
+            type: 'task_updated',
+            isRead: true,
+            createdAt: new Date(Date.now() - 1000 * 60 * 120),
+          },
+        );
+      }
+      if (userId) {
+        notifsToInsert.push(
+          {
+            userId: userId,
+            title: 'Task assigned to you',
+            message: 'You have been assigned a new task "Update project documentation" by Anish Borkar.',
+            type: 'task_assigned',
+            isRead: false,
+            createdAt: new Date(Date.now() - 1000 * 60 * 15),
+          },
+          {
+            userId: userId,
+            title: 'Assigned to Project',
+            message: 'You have been added to the project "Website Redesign".',
+            type: 'project_assigned',
+            isRead: false,
+            createdAt: new Date(Date.now() - 1000 * 60 * 50),
+          },
+          {
+            userId: userId,
+            title: 'Assigned to Project',
+            message: 'You have been added to the project "Mobile App".',
+            type: 'project_assigned',
+            isRead: true,
+            createdAt: new Date(Date.now() - 1000 * 60 * 90),
+          },
+        );
+      }
+      if (notifsToInsert.length > 0) {
+        await db.insert(schema.notifications).values(notifsToInsert).onConflictDoNothing();
+      }
     }
 
     console.log('✅ Seeding completed successfully!');

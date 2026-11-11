@@ -8,17 +8,26 @@ import {
   Layers,
   MessageSquare,
   CheckSquare,
+  Clock,
+  Loader2,
 } from 'lucide-react';
 import { useNotificationStore } from '../../stores/notificationStore';
 import { Button } from '../../components/common/Button';
 import { Modal } from '../../components/common/Modal';
-import { api } from '../../services/api';
 
 export const NotificationsPage: React.FC = () => {
-  const { notifications, unreadCount, setNotifications, markAsRead, markAllAsRead } =
-    useNotificationStore();
+  const {
+    notifications,
+    unreadCount,
+    isLoading,
+    fetchNotifications,
+    markAsRead,
+    markAllAsRead,
+  } = useNotificationStore();
+
   const [activeFilter, setActiveFilter] = useState<'All' | 'Unread' | 'Project' | 'Task'>('All');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [justReadIds, setJustReadIds] = useState<Set<string>>(new Set());
 
   // Notification Settings toggles
   const [taskUpdates, setTaskUpdates] = useState(true);
@@ -28,40 +37,28 @@ export const NotificationsPage: React.FC = () => {
   const [inAppNotifs, setInAppNotifs] = useState(true);
 
   useEffect(() => {
-    const fetchNotifications = async () => {
-      try {
-        const data: any = await api.get('/notifications');
-        const list = Array.isArray(data) ? data : data?.notifications || [];
-        setNotifications(list);
-      } catch (err) {
-        console.error('Failed to load notifications:', err);
-      }
-    };
     fetchNotifications();
-  }, [setNotifications]);
+  }, [fetchNotifications]);
 
-  const handleMarkAsRead = async (id: string) => {
-    markAsRead(id);
-    try {
-      await api.patch(`/notifications/${id}/read`);
-    } catch (err) {
-      console.warn('Failed to mark notification as read on backend', err);
-    }
+  const handleTabChange = (filter: 'All' | 'Unread' | 'Project' | 'Task') => {
+    setActiveFilter(filter);
+    setJustReadIds(new Set());
   };
 
-  const handleMarkAllAsRead = async () => {
+  const handleMarkAsRead = (id: string) => {
+    setJustReadIds((prev) => new Set(prev).add(id));
+    markAsRead(id);
+  };
+
+  const handleMarkAllAsRead = () => {
     markAllAsRead();
-    try {
-      await api.patch('/notifications/read-all');
-    } catch (err) {
-      console.warn('Failed to mark all as read on backend', err);
-    }
+    setJustReadIds(new Set());
   };
 
   const filtered = notifications.filter((n) => {
-    if (activeFilter === 'Unread') return !n.isRead;
-    if (activeFilter === 'Project') return n.type === 'project_updated';
-    if (activeFilter === 'Task') return n.type.startsWith('task_');
+    if (activeFilter === 'Unread') return !n.isRead || justReadIds.has(n.id);
+    if (activeFilter === 'Project') return n.type.startsWith('project');
+    if (activeFilter === 'Task') return n.type.startsWith('task');
     return true;
   });
 
@@ -71,12 +68,15 @@ export const NotificationsPage: React.FC = () => {
         return <CheckSquare size={18} color="#4f46e5" />;
       case 'task_completed':
         return <CheckCircle2 size={18} color="#10b981" />;
+      case 'task_updated':
+        return <Clock size={18} color="#0284c7" />;
       case 'project_updated':
+      case 'project_assigned':
         return <Layers size={18} color="#3b82f6" />;
       case 'comment':
         return <MessageSquare size={18} color="#f59e0b" />;
       default:
-        return <UserPlus size={18} color="#8b5cf6" />;
+        return <Bell size={18} color="#8b5cf6" />;
     }
   };
 
@@ -131,7 +131,7 @@ export const NotificationsPage: React.FC = () => {
           {(['All', 'Unread', 'Project', 'Task'] as const).map((filter) => (
             <button
               key={filter}
-              onClick={() => setActiveFilter(filter)}
+              onClick={() => handleTabChange(filter)}
               style={{
                 padding: '7px 18px',
                 borderRadius: '8px',
@@ -141,6 +141,7 @@ export const NotificationsPage: React.FC = () => {
                 color: activeFilter === filter ? '#ffffff' : '#475569',
                 border: activeFilter === filter ? 'none' : '1px solid #e2e8f0',
                 transition: 'all 0.15s ease',
+                cursor: 'pointer',
               }}
             >
               {filter} {filter === 'Unread' && unreadCount > 0 ? `(${unreadCount})` : ''}
@@ -150,70 +151,104 @@ export const NotificationsPage: React.FC = () => {
 
         {/* Notifications List */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {filtered.length === 0 ? (
+          {isLoading && notifications.length === 0 ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0', color: '#64748b', gap: '10px' }}>
+              <Loader2 size={24} className="spin-animate" />
+              <span>Loading notifications...</span>
+            </div>
+          ) : filtered.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '48px 0', color: '#94a3b8' }}>
               <Bell size={40} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
               <div style={{ fontSize: '15px', fontWeight: 600 }}>No notifications found</div>
+              <p style={{ fontSize: '13px', color: '#94a3b8', marginTop: '4px' }}>
+                {activeFilter === 'Unread' ? 'You are all caught up!' : 'No notifications in this filter category.'}
+              </p>
             </div>
           ) : (
-            filtered.map((item) => (
-              <div
-                key={item.id}
-                onClick={() => handleMarkAsRead(item.id)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '16px 20px',
-                  borderRadius: '12px',
-                  backgroundColor: item.isRead ? '#ffffff' : '#f8fafc',
-                  border: `1px solid ${item.isRead ? '#f1f5f9' : '#e2e8f0'}`,
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                  <div
-                    style={{
-                      width: '40px',
-                      height: '40px',
-                      borderRadius: '10px',
-                      backgroundColor: '#ffffff',
-                      border: '1px solid #e2e8f0',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    {getIcon(item.type)}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>
-                      {item.title}
-                    </div>
-                    <div style={{ fontSize: '13px', color: '#475569', marginTop: '2px' }}>
-                      {item.message}
-                    </div>
-                  </div>
-                </div>
+            filtered.map((item) => {
+              const isItemRead = item.isRead && !justReadIds.has(item.id);
+              const isNewlyRead = justReadIds.has(item.id);
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <span style={{ fontSize: '12.5px', color: '#94a3b8' }}>
-                    {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                  {!item.isRead && (
-                    <span
+              return (
+                <div
+                  key={item.id}
+                  onClick={() => handleMarkAsRead(item.id)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '16px 20px',
+                    borderRadius: '12px',
+                    backgroundColor: item.isRead ? '#ffffff' : '#f0f7ff',
+                    border: `1px solid ${item.isRead ? '#e2e8f0' : '#c7d2fe'}`,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (item.isRead) e.currentTarget.style.backgroundColor = '#fafafa';
+                  }}
+                  onMouseLeave={(e) => {
+                    if (item.isRead) e.currentTarget.style.backgroundColor = '#ffffff';
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    <div
                       style={{
-                        width: '8px',
-                        height: '8px',
-                        borderRadius: '50%',
-                        backgroundColor: '#4f46e5',
+                        width: '40px',
+                        height: '40px',
+                        borderRadius: '10px',
+                        backgroundColor: '#ffffff',
+                        border: '1px solid #e2e8f0',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
                       }}
-                    />
-                  )}
+                    >
+                      {getIcon(item.type)}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '14px', fontWeight: item.isRead ? 600 : 700, color: '#0f172a' }}>
+                        {item.title}
+                      </div>
+                      <div style={{ fontSize: '13px', color: '#475569', marginTop: '2px' }}>
+                        {item.message}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
+                    <span style={{ fontSize: '12.5px', color: '#94a3b8' }}>
+                      {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    {!item.isRead ? (
+                      <span
+                        title="Unread notification"
+                        style={{
+                          width: '9px',
+                          height: '9px',
+                          borderRadius: '50%',
+                          backgroundColor: '#4f46e5',
+                        }}
+                      />
+                    ) : isNewlyRead ? (
+                      <span
+                        style={{
+                          fontSize: '11px',
+                          color: '#10b981',
+                          fontWeight: 600,
+                          backgroundColor: '#ecfdf5',
+                          padding: '2px 8px',
+                          borderRadius: '6px',
+                        }}
+                      >
+                        Just read
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>

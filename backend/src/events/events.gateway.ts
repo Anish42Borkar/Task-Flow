@@ -21,9 +21,30 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
+  static instance: EventsGateway | null = null;
   private readonly logger = new Logger(EventsGateway.name);
 
-  constructor(private readonly jwtService: JwtService) {}
+  constructor(private readonly jwtService: JwtService) {
+    EventsGateway.instance = this;
+  }
+
+  static emitToUser(userId: string, event: string, payload: any) {
+    if (EventsGateway.instance?.server) {
+      EventsGateway.instance.server.to(`user:${userId}`).emit(event, payload);
+    }
+  }
+
+  static emitToProject(projectId: string, event: string, payload: any) {
+    if (EventsGateway.instance?.server) {
+      EventsGateway.instance.server.to(`project:${projectId}`).emit(event, payload);
+    }
+  }
+
+  static emitAll(event: string, payload: any) {
+    if (EventsGateway.instance?.server) {
+      EventsGateway.instance.server.emit(event, payload);
+    }
+  }
 
   async handleConnection(client: Socket) {
     try {
@@ -49,6 +70,18 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   handleDisconnect(client: Socket) {
     this.logger.log(`Client disconnected: ${client.id}`);
+  }
+
+  @SubscribeMessage('user:join')
+  async handleJoinUser(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { userId: string },
+  ) {
+    if (data?.userId) {
+      await client.join(`user:${data.userId}`);
+      this.logger.log(`Socket ${client.id} joined personal room: user:${data.userId}`);
+      return { status: 'joined', userId: data.userId };
+    }
   }
 
   @SubscribeMessage('project:join')

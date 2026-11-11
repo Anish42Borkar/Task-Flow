@@ -26,6 +26,15 @@ export const initSocket = (token?: string): Socket => {
 
   socket.on('connect', () => {
     console.log('[Socket] Connected with ID:', socket?.id);
+    const storedUserStr = localStorage.getItem('taskflow_user');
+    if (storedUserStr) {
+      try {
+        const u = JSON.parse(storedUserStr);
+        if (u?.id) {
+          socket?.emit('user:join', { userId: u.id });
+        }
+      } catch (e) {}
+    }
   });
 
   socket.on('disconnect', (reason) => {
@@ -37,7 +46,7 @@ export const initSocket = (token?: string): Socket => {
   });
 
   // Global Real-time Notification listener
-  socket.on('notification:new', (notification) => {
+  socket.on('notification:new', (notification: any) => {
     console.log('[Socket] New notification received:', notification);
     useNotificationStore.getState().addNotification({
       id: notification.id || Math.random().toString(),
@@ -45,9 +54,49 @@ export const initSocket = (token?: string): Socket => {
       title: notification.title,
       message: notification.message,
       type: notification.type || 'info',
+      referenceId: notification.referenceId,
       isRead: false,
       createdAt: notification.createdAt || new Date().toISOString(),
     });
+  });
+
+  // Project assigned listener - popup message and store update
+  socket.on('project:assigned', (data: any) => {
+    console.log('[Socket] Project assigned event received:', data);
+    const title = data.title || 'Project Assigned';
+    const message =
+      data.message ||
+      (data.projectName
+        ? `You have been assigned to project "${data.projectName}".`
+        : 'You have been assigned to a project.');
+
+    // Display instant popup toast message
+    useNotificationStore.getState().addToast(title, message, 'success');
+
+    // Add to in-app notification center
+    useNotificationStore.getState().addNotification({
+      id: data.notification?.id || Math.random().toString(),
+      userId: data.notification?.userId || 'me',
+      title,
+      message,
+      type: 'project_assigned',
+      referenceId: data.projectId,
+      isRead: false,
+      createdAt: data.notification?.createdAt || new Date().toISOString(),
+    });
+
+    // Refresh full notification count and list
+    useNotificationStore.getState().fetchNotifications();
+
+    // Notify any active page components (e.g., ProjectsPage) to auto-reload project list
+    window.dispatchEvent(new CustomEvent('taskflow:project_assigned', { detail: data }));
+  });
+
+  // Project removed listener
+  socket.on('project:removed', (data: any) => {
+    console.log('[Socket] Project removed:', data);
+    useNotificationStore.getState().fetchNotifications();
+    window.dispatchEvent(new CustomEvent('taskflow:project_assigned', { detail: data }));
   });
 
   return socket;

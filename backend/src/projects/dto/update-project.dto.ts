@@ -1,4 +1,4 @@
-import { IsOptional, IsString } from 'class-validator';
+import { IsOptional, IsString, IsArray, IsUUID } from 'class-validator';
 
 export class UpdateProjectDto {
   @IsOptional()
@@ -16,4 +16,9 @@ export class UpdateProjectDto {
   @IsOptional()
   @IsString()
   dueDate?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  memberIds?: string[];
 }

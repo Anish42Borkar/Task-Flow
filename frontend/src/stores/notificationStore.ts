@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { NotificationItem } from '../types';
+import { api } from '../services/api';
 
 export interface ToastMessage {
   id: string;
@@ -12,56 +13,53 @@ export interface ToastMessage {
 interface NotificationState {
   notifications: NotificationItem[];
   unreadCount: number;
+  isLoading: boolean;
   toasts: ToastMessage[];
   addToast: (title: string, message: string, type?: ToastMessage['type']) => void;
   removeToast: (id: string) => void;
   setNotifications: (items: NotificationItem[]) => void;
   addNotification: (item: NotificationItem) => void;
-  markAsRead: (id: string) => void;
-  markAllAsRead: () => void;
+  markAsRead: (id: string) => Promise<void>;
+  markAllAsRead: () => Promise<void>;
+  fetchNotifications: () => Promise<void>;
 }
 
 export const useNotificationStore = create<NotificationState>((set, get) => ({
-  notifications: [
-    {
-      id: '1',
-      userId: 'u1',
-      title: 'Task assigned to you',
-      message: 'You have been assigned a new task "Update project documentation" by Rohit Sharma.',
-      type: 'task_assigned',
-      isRead: false,
-      createdAt: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-    },
-    {
-      id: '2',
-      userId: 'u1',
-      title: 'New user added',
-      message: 'Priya Desai has been added to the project "Website Redesign".',
-      type: 'project_updated',
-      isRead: false,
-      createdAt: new Date(Date.now() - 1000 * 60 * 55).toISOString(),
-    },
-    {
-      id: '3',
-      userId: 'u1',
-      title: 'Project updated',
-      message: 'The project "Mobile App" has been updated by Amit Patil.',
-      type: 'project_updated',
-      isRead: false,
-      createdAt: new Date(Date.now() - 1000 * 60 * 90).toISOString(),
-    },
-    {
-      id: '4',
-      userId: 'u1',
-      title: 'Task completed',
-      message: '"Integrate authentication" has been marked as completed by Neha Kulkarni.',
-      type: 'task_completed',
-      isRead: true,
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
-    },
-  ],
-  unreadCount: 3,
+  notifications: [],
+  unreadCount: 0,
+  isLoading: false,
   toasts: [],
+
+  fetchNotifications: async () => {
+    try {
+      set({ isLoading: true });
+      const res: any = await api.get('/notifications');
+      const items = Array.isArray(res) ? res : res?.notifications || [];
+
+      set((state) => {
+        // Keep any newly added local notifications (created in last 10s) that aren't yet in server items
+        const now = Date.now();
+        const localRecent = state.notifications.filter((n) => {
+          const itemExists = items.some(
+            (i: any) =>
+              i.id === n.id ||
+              (i.title === n.title && i.referenceId && i.referenceId === n.referenceId),
+          );
+          if (itemExists) return false;
+          const age = now - new Date(n.createdAt).getTime();
+          return age < 10000;
+        });
+
+        const combined = [...localRecent, ...items];
+        const count = combined.filter((n: any) => !n.isRead).length;
+
+        return { notifications: combined, unreadCount: count, isLoading: false };
+      });
+    } catch (err) {
+      console.warn('Failed to fetch notifications from backend:', err);
+      set({ isLoading: false });
+    }
+  },
 
   addToast: (title, message, type = 'info') => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -78,28 +76,43 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
 
   setNotifications: (items) => {
     const unread = items.filter((n) => !n.isRead).length;
-    set({ notifications: items, unreadCount: unread });
+    set({ notifications: items, unreadCount: unread, isLoading: false });
   },
 
   addNotification: (item) => {
-    set((state) => ({
-      notifications: [item, ...state.notifications],
-      unreadCount: item.isRead ? state.unreadCount : state.unreadCount + 1,
-    }));
+    set((state) => {
+      // Prevent duplicate notification addition
+      const exists = state.notifications.some((n) => n.id === item.id);
+      if (exists) return state;
+      return {
+        notifications: [item, ...state.notifications],
+        unreadCount: item.isRead ? state.unreadCount : state.unreadCount + 1,
+      };
+    });
     get().addToast(item.title, item.message, 'info');
   },
 
-  markAsRead: (id) => {
+  markAsRead: async (id) => {
     set((state) => ({
       notifications: state.notifications.map((n) => (n.id === id ? { ...n, isRead: true } : n)),
       unreadCount: Math.max(0, state.unreadCount - 1),
     }));
+    try {
+      await api.patch(`/notifications/${id}/read`);
+    } catch (err) {
+      console.warn('Failed to mark notification read on backend:', err);
+    }
   },
 
-  markAllAsRead: () => {
+  markAllAsRead: async () => {
     set((state) => ({
       notifications: state.notifications.map((n) => ({ ...n, isRead: true })),
       unreadCount: 0,
     }));
+    try {
+      await api.patch('/notifications/read-all');
+    } catch (err) {
+      console.warn('Failed to mark all notifications read on backend:', err);
+    }
   },
 }));

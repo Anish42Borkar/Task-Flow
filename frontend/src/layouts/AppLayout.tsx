@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -14,6 +14,9 @@ import {
   ChevronDown,
   User as UserIcon,
   Check,
+  CheckCheck,
+  Layers,
+  ArrowRight,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useNotificationStore } from '../stores/notificationStore';
@@ -21,14 +24,43 @@ import { ToastContainer } from '../components/feedback/ToastContainer';
 
 export const AppLayout: React.FC = () => {
   const { user, logout } = useAuthStore();
-  const { unreadCount } = useNotificationStore();
+  const {
+    notifications,
+    unreadCount,
+    fetchNotifications,
+    markAsRead,
+    markAllAsRead,
+  } = useNotificationStore();
   const navigate = useNavigate();
   const location = useLocation();
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const [notificationDropdownOpen, setNotificationDropdownOpen] = useState(false);
+  const notifRef = useRef<HTMLDivElement>(null);
+  const profileRef = useRef<HTMLDivElement>(null);
 
   const isAdmin = user?.role === 'admin';
+
+  useEffect(() => {
+    if (user?.id) {
+      fetchNotifications();
+    }
+  }, [user?.id, fetchNotifications]);
+
+  // Click outside listener for dropdowns
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setNotificationDropdownOpen(false);
+      }
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
+        setProfileDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -272,35 +304,251 @@ export const AppLayout: React.FC = () => {
 
           {/* Right section: Notification Bell & Profile dropdown */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-            <button
-              onClick={() => navigate('/notifications')}
-              style={{
-                position: 'relative',
-                color: '#64748b',
-                padding: '8px',
-                borderRadius: '8px',
-                display: 'flex',
-                alignItems: 'center',
-              }}
-            >
-              <Bell size={20} />
-              {unreadCount > 0 && (
-                <span
+            {/* Notification Bell Dropdown */}
+            <div ref={notifRef} style={{ position: 'relative' }}>
+              <button
+                onClick={() => setNotificationDropdownOpen(!notificationDropdownOpen)}
+                style={{
+                  position: 'relative',
+                  color: notificationDropdownOpen ? '#4f46e5' : '#64748b',
+                  backgroundColor: notificationDropdownOpen ? '#eef2ff' : 'transparent',
+                  padding: '8px',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  border: 'none',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+                title="Notifications"
+              >
+                <Bell size={20} />
+                {unreadCount > 0 && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: '4px',
+                      right: '4px',
+                      minWidth: '16px',
+                      height: '16px',
+                      padding: '0 4px',
+                      backgroundColor: '#ef4444',
+                      color: '#ffffff',
+                      borderRadius: '9999px',
+                      fontSize: '10px',
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {/* Notification Popover */}
+              {notificationDropdownOpen && (
+                <div
                   style={{
                     position: 'absolute',
-                    top: '6px',
-                    right: '6px',
-                    width: '8px',
-                    height: '8px',
-                    backgroundColor: '#ef4444',
-                    borderRadius: '50%',
+                    right: 0,
+                    top: '46px',
+                    width: '360px',
+                    backgroundColor: '#ffffff',
+                    borderRadius: '14px',
+                    border: '1px solid #e2e8f0',
+                    boxShadow: '0 12px 28px -4px rgba(15, 23, 42, 0.15)',
+                    zIndex: 50,
+                    overflow: 'hidden',
                   }}
-                />
+                >
+                  {/* Popover Header */}
+                  <div
+                    style={{
+                      padding: '14px 16px',
+                      borderBottom: '1px solid #f1f5f9',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      backgroundColor: '#f8fafc',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>
+                        Notifications
+                      </span>
+                      {unreadCount > 0 && (
+                        <span
+                          style={{
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            color: '#4f46e5',
+                            backgroundColor: '#eef2ff',
+                            padding: '1px 8px',
+                            borderRadius: '9999px',
+                          }}
+                        >
+                          {unreadCount} new
+                        </span>
+                      )}
+                    </div>
+                    {unreadCount > 0 && (
+                      <button
+                        onClick={() => markAllAsRead()}
+                        style={{
+                          fontSize: '12px',
+                          color: '#4f46e5',
+                          fontWeight: 600,
+                          border: 'none',
+                          background: 'transparent',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                        }}
+                      >
+                        <CheckCheck size={14} />
+                        Mark all read
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Popover Notification List */}
+                  <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
+                    {notifications.length === 0 ? (
+                      <div style={{ padding: '36px 20px', textAlign: 'center', color: '#94a3b8' }}>
+                        <Bell size={32} style={{ margin: '0 auto 8px', opacity: 0.4 }} />
+                        <div style={{ fontSize: '13px', fontWeight: 500 }}>No notifications yet</div>
+                      </div>
+                    ) : (
+                      notifications.slice(0, 5).map((item) => (
+                        <div
+                          key={item.id}
+                          onClick={() => {
+                            if (!item.isRead) markAsRead(item.id);
+                          }}
+                          style={{
+                            padding: '12px 16px',
+                            borderBottom: '1px solid #f8fafc',
+                            backgroundColor: item.isRead ? '#ffffff' : '#f0f7ff',
+                            cursor: 'pointer',
+                            transition: 'background-color 0.15s ease',
+                            display: 'flex',
+                            gap: '12px',
+                            alignItems: 'flex-start',
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: '32px',
+                              height: '32px',
+                              borderRadius: '8px',
+                              backgroundColor: item.type.startsWith('task')
+                                ? '#eef2ff'
+                                : item.type.startsWith('project')
+                                ? '#ecfdf5'
+                                : '#f1f5f9',
+                              color: item.type.startsWith('task')
+                                ? '#4f46e5'
+                                : item.type.startsWith('project')
+                                ? '#10b981'
+                                : '#64748b',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flexShrink: 0,
+                              marginTop: '2px',
+                            }}
+                          >
+                            {item.type.startsWith('task') ? (
+                              <CheckSquare size={16} />
+                            ) : item.type.startsWith('project') ? (
+                              <Layers size={16} />
+                            ) : (
+                              <Bell size={16} />
+                            )}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div
+                              style={{
+                                fontSize: '13px',
+                                fontWeight: item.isRead ? 600 : 700,
+                                color: '#0f172a',
+                              }}
+                            >
+                              {item.title}
+                            </div>
+                            <div
+                              style={{
+                                fontSize: '12px',
+                                color: '#475569',
+                                marginTop: '2px',
+                                lineHeight: 1.4,
+                              }}
+                            >
+                              {item.message}
+                            </div>
+                            <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
+                              {new Date(item.createdAt).toLocaleTimeString([], {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </div>
+                          </div>
+                          {!item.isRead && (
+                            <span
+                              style={{
+                                width: '7px',
+                                height: '7px',
+                                borderRadius: '50%',
+                                backgroundColor: '#4f46e5',
+                                flexShrink: 0,
+                                marginTop: '6px',
+                              }}
+                            />
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Popover Footer */}
+                  <div
+                    style={{
+                      padding: '10px 16px',
+                      borderTop: '1px solid #f1f5f9',
+                      backgroundColor: '#f8fafc',
+                      textAlign: 'center',
+                    }}
+                  >
+                    <button
+                      onClick={() => {
+                        setNotificationDropdownOpen(false);
+                        navigate('/notifications');
+                      }}
+                      style={{
+                        fontSize: '12.5px',
+                        fontWeight: 600,
+                        color: '#4f46e5',
+                        border: 'none',
+                        background: 'transparent',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                    >
+                      View all notifications
+                      <ArrowRight size={14} />
+                    </button>
+                  </div>
+                </div>
               )}
-            </button>
+            </div>
 
             {/* User Profile Pill */}
-            <div style={{ position: 'relative' }}>
+            <div ref={profileRef} style={{ position: 'relative' }}>
               <button
                 onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
                 style={{

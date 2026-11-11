@@ -52,7 +52,16 @@ export interface NotificationItem {
   userId: string;
   title: string;
   message: string;
-  type: 'task_assigned' | 'task_updated' | 'task_completed' | 'task_reordered' | 'project_updated' | 'comment';
+  type:
+    | 'task_assigned'
+    | 'task_updated'
+    | 'task_completed'
+    | 'task_reordered'
+    | 'project_updated'
+    | 'project_assigned'
+    | 'comment'
+    | 'info'
+    | string;
   referenceId?: string;
   isRead: boolean;
   createdAt: string;

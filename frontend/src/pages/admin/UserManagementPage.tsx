@@ -5,8 +5,12 @@ import {
   Search,
   Plus,
   Trash2,
+  Edit2,
   Loader2,
   CheckCircle2,
+  AlertTriangle,
+  UserCheck,
+  UserX,
 } from 'lucide-react';
 import { User, RoleType } from '../../types';
 import { Button } from '../../components/common/Button';
@@ -27,7 +31,10 @@ export const UserManagementPage: React.FC = () => {
 
   // Modals
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
+  const [isEditUserModalOpen, setIsEditUserModalOpen] = useState(false);
   const [isAddRoleModalOpen, setIsAddRoleModalOpen] = useState(false);
+  const [isEditRoleModalOpen, setIsEditRoleModalOpen] = useState(false);
+  const [isDeleteRoleModalOpen, setIsDeleteRoleModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // New User form
@@ -38,15 +45,33 @@ export const UserManagementPage: React.FC = () => {
   const [newDept, setNewDept] = useState('Engineering');
   const [newPhone, setNewPhone] = useState('');
 
+  // Edit User form
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editFullName, setEditFullName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editRoleId, setEditRoleId] = useState('user');
+  const [editDept, setEditDept] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editIsActive, setEditIsActive] = useState(true);
+
   // New Role form
   const [newRoleName, setNewRoleName] = useState('');
   const [newRoleDesc, setNewRoleDesc] = useState('');
+
+  // Edit Role form
+  const [editingRole, setEditingRole] = useState<any | null>(null);
+  const [editRoleName, setEditRoleName] = useState('');
+  const [editRoleDesc, setEditRoleDesc] = useState('');
+
+  // Delete Role state
+  const [roleToDelete, setRoleToDelete] = useState<any | null>(null);
+  const [reassignTargetRoleId, setReassignTargetRoleId] = useState('user');
 
   const fetchData = useCallback(async () => {
     try {
       setIsLoading(true);
       const [usersRes, rolesRes]: [any, any] = await Promise.all([
-        api.get('/users?limit=50'),
+        api.get('/users?limit=100'),
         api.get('/roles'),
       ]);
 
@@ -54,6 +79,7 @@ export const UserManagementPage: React.FC = () => {
       const userList = rawUsers.map((u: any) => ({
         ...u,
         role: u.role || u.roleId || 'user',
+        roleId: u.roleId || u.role || 'user',
       }));
       const roleList = Array.isArray(rolesRes) ? rolesRes : [];
 
@@ -84,6 +110,10 @@ export const UserManagementPage: React.FC = () => {
     return matchesSearch && matchesRole;
   });
 
+  // ============================================================================
+  // USER ACTIONS
+  // ============================================================================
+
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newFullName.trim() || !newEmail.trim() || !newPassword.trim()) return;
@@ -103,11 +133,66 @@ export const UserManagementPage: React.FC = () => {
       setIsAddUserModalOpen(false);
       setNewFullName('');
       setNewEmail('');
+      setNewPhone('');
       fetchData();
     } catch (err: any) {
       addToast('Error', err.message || 'Failed to create user', 'error');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const openEditUserModal = (u: User) => {
+    setEditingUser(u);
+    setEditFullName(u.fullName || '');
+    setEditEmail(u.email || '');
+    setEditRoleId((u as any).roleId || u.role || 'user');
+    setEditDept(u.department || '');
+    setEditPhone(u.phone || '');
+    setEditIsActive(u.isActive !== false);
+    setIsEditUserModalOpen(true);
+  };
+
+  const handleUpdateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser || !editFullName.trim() || !editEmail.trim()) return;
+
+    try {
+      setIsSubmitting(true);
+      await api.put(`/users/${editingUser.id}`, {
+        fullName: editFullName.trim(),
+        email: editEmail.trim(),
+        roleId: editRoleId,
+        department: editDept.trim() || undefined,
+        phone: editPhone.trim() || undefined,
+        isActive: editIsActive,
+      });
+
+      addToast('User Updated', `Account for "${editFullName}" updated successfully`, 'success');
+      setIsEditUserModalOpen(false);
+      fetchData();
+    } catch (err: any) {
+      addToast('Error', err.message || 'Failed to update user', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Quick 1-Click Role Change directly in the table
+  const handleQuickRoleChange = async (userId: string, newRole: string) => {
+    // Optimistic UI update
+    setUsers((prev) =>
+      prev.map((u) => (u.id === userId ? { ...u, role: newRole as RoleType, roleId: newRole } : u)),
+    );
+
+    try {
+      await api.put(`/users/${userId}`, { roleId: newRole });
+      const targetRoleName = roles.find((r) => r.id === newRole)?.name || newRole;
+      addToast('Role Updated', `User role changed to "${targetRoleName}"`, 'success');
+      fetchData();
+    } catch (err: any) {
+      addToast('Error', err.message || 'Failed to update user role', 'error');
+      fetchData(); // Rollback on error
     }
   };
 
@@ -123,6 +208,10 @@ export const UserManagementPage: React.FC = () => {
     }
   };
 
+  // ============================================================================
+  // ROLE ACTIONS
+  // ============================================================================
+
   const handleCreateRole = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newRoleName.trim()) return;
@@ -134,7 +223,7 @@ export const UserManagementPage: React.FC = () => {
         description: newRoleDesc.trim() || undefined,
       });
 
-      addToast('Role Created', `Role "${newRoleName}" added`, 'success');
+      addToast('Role Created', `Role "${newRoleName}" added successfully`, 'success');
       setIsAddRoleModalOpen(false);
       setNewRoleName('');
       setNewRoleDesc('');
@@ -146,19 +235,98 @@ export const UserManagementPage: React.FC = () => {
     }
   };
 
+  const openEditRoleModal = (role: any) => {
+    setEditingRole(role);
+    setEditRoleName(role.name || '');
+    setEditRoleDesc(role.description || '');
+    setIsEditRoleModalOpen(true);
+  };
+
+  const handleUpdateRole = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingRole || !editRoleName.trim()) return;
+
+    try {
+      setIsSubmitting(true);
+      await api.put(`/roles/${editingRole.id}`, {
+        name: editRoleName.trim(),
+        description: editRoleDesc.trim() || undefined,
+      });
+
+      addToast('Role Updated', `Role "${editRoleName}" updated successfully`, 'success');
+      setIsEditRoleModalOpen(false);
+      fetchData();
+    } catch (err: any) {
+      addToast('Error', err.message || 'Failed to update role', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const openDeleteRoleModal = (role: any) => {
+    if (role.id === 'admin') {
+      addToast('Action Denied', 'The Administrator role is essential and cannot be deleted.', 'error');
+      return;
+    }
+    setRoleToDelete(role);
+    // Default reassignment role to 'user' if not the same
+    setReassignTargetRoleId(role.id === 'user' ? 'viewer' : 'user');
+    setIsDeleteRoleModalOpen(true);
+  };
+
+  const handleConfirmDeleteRole = async () => {
+    if (!roleToDelete) return;
+
+    try {
+      setIsSubmitting(true);
+      const userCount = roleToDelete.usersCount || 0;
+      let url = `/roles/${roleToDelete.id}`;
+      if (userCount > 0 && reassignTargetRoleId) {
+        url += `?reassignTo=${reassignTargetRoleId}`;
+      }
+
+      await api.delete(url);
+      addToast(
+        'Role Deleted',
+        `Role "${roleToDelete.name}" was deleted${
+          userCount > 0 ? ` and ${userCount} user(s) reassigned to "${reassignTargetRoleId}"` : ''
+        }`,
+        'success',
+      );
+      setIsDeleteRoleModalOpen(false);
+      setRoleToDelete(null);
+      fetchData();
+    } catch (err: any) {
+      addToast('Error', err.message || 'Failed to delete role', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div>
       {/* Top Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{ width: '28px', height: '28px', borderRadius: '6px', backgroundColor: '#eef2ff', color: '#4f46e5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div
+              style={{
+                width: '28px',
+                height: '28px',
+                borderRadius: '6px',
+                backgroundColor: '#eef2ff',
+                color: '#4f46e5',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
               <Users size={16} />
             </div>
             <h1 style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a' }}>User Management</h1>
           </div>
           <p style={{ fontSize: '13.5px', color: '#64748b', marginTop: '2px' }}>
-            Manage user accounts, roles, access permissions and directory status.
+            Manage user accounts, assign roles, define custom system groups, and configure permissions.
           </p>
         </div>
       </div>
@@ -266,6 +434,7 @@ export const UserManagementPage: React.FC = () => {
                     fontSize: '13.5px',
                     color: '#334155',
                     outline: 'none',
+                    cursor: 'pointer',
                   }}
                 >
                   <option value="all">All Roles</option>
@@ -290,7 +459,7 @@ export const UserManagementPage: React.FC = () => {
             <div style={{ overflowX: 'auto' }}>
               {isLoading ? (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px', color: '#64748b', gap: '10px' }}>
-                  <Loader2 size={24} className="spin-animate" />
+                  <Loader2 size={24} className="animate-spin" />
                   <span>Loading users...</span>
                 </div>
               ) : (
@@ -299,16 +468,16 @@ export const UserManagementPage: React.FC = () => {
                     <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontWeight: 600, fontSize: '12.5px' }}>
                       <th style={{ padding: '14px 20px' }}>Name</th>
                       <th style={{ padding: '14px 20px' }}>Email</th>
-                      <th style={{ padding: '14px 20px' }}>Role</th>
+                      <th style={{ padding: '14px 20px', minWidth: '180px' }}>Role</th>
                       <th style={{ padding: '14px 20px' }}>Department</th>
                       <th style={{ padding: '14px 20px' }}>Status</th>
-                      <th style={{ padding: '14px 20px', textAlign: 'center' }}>Actions</th>
+                      <th style={{ padding: '14px 20px', textAlign: 'center', width: '110px' }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredUsers.map((u) => {
-                      const roleName = (u.role || (u as any).roleId || 'user').toUpperCase();
-                      const initials = u.fullName
+                      const userRoleId = (u as any).roleId || u.role || 'user';
+                      const initials = (u.fullName || 'User')
                         .split(' ')
                         .map((n) => n[0])
                         .join('')
@@ -344,34 +513,89 @@ export const UserManagementPage: React.FC = () => {
                             </div>
                           </td>
                           <td style={{ padding: '16px 20px', color: '#475569' }}>{u.email}</td>
+
+                          {/* Quick Role Change Column */}
                           <td style={{ padding: '16px 20px' }}>
-                            <span
-                              style={{
-                                padding: '4px 10px',
-                                borderRadius: '6px',
-                                fontSize: '11.5px',
-                                fontWeight: 700,
-                                backgroundColor: roleName === 'ADMIN' ? '#eef2ff' : '#f1f5f9',
-                                color: roleName === 'ADMIN' ? '#4f46e5' : '#475569',
-                              }}
-                            >
-                              {roleName}
-                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <select
+                                value={userRoleId}
+                                onChange={(e) => handleQuickRoleChange(u.id, e.target.value)}
+                                style={{
+                                  padding: '5px 10px',
+                                  borderRadius: '8px',
+                                  fontSize: '12px',
+                                  fontWeight: 700,
+                                  border: '1.5px solid #e2e8f0',
+                                  backgroundColor:
+                                    userRoleId === 'admin'
+                                      ? '#eef2ff'
+                                      : userRoleId === 'project_manager'
+                                      ? '#eff6ff'
+                                      : userRoleId === 'viewer'
+                                      ? '#f8fafc'
+                                      : '#f0fdf4',
+                                  color:
+                                    userRoleId === 'admin'
+                                      ? '#4f46e5'
+                                      : userRoleId === 'project_manager'
+                                      ? '#2563eb'
+                                      : userRoleId === 'viewer'
+                                      ? '#64748b'
+                                      : '#16a34a',
+                                  cursor: 'pointer',
+                                  outline: 'none',
+                                }}
+                                title="Click to quickly reassign role"
+                              >
+                                {roles.map((r) => (
+                                  <option key={r.id} value={r.id}>
+                                    {r.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
                           </td>
+
                           <td style={{ padding: '16px 20px', color: '#64748b' }}>{u.department || 'General'}</td>
                           <td style={{ padding: '16px 20px' }}>
                             <Badge variant={u.isActive ? 'completed' : 'pending'}>
                               {u.isActive ? 'Active' : 'Inactive'}
                             </Badge>
                           </td>
+
+                          {/* Action Buttons: Edit User & Delete User */}
                           <td style={{ padding: '16px 20px', textAlign: 'center' }}>
-                            <button
-                              onClick={() => handleDeleteUser(u.id, u.fullName)}
-                              style={{ color: '#ef4444', padding: '6px', borderRadius: '6px', border: 'none', background: 'transparent', cursor: 'pointer' }}
-                              title="Delete User"
-                            >
-                              <Trash2 size={16} />
-                            </button>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                              <button
+                                onClick={() => openEditUserModal(u)}
+                                style={{
+                                  color: '#64748b',
+                                  padding: '6px',
+                                  borderRadius: '6px',
+                                  border: 'none',
+                                  background: 'transparent',
+                                  cursor: 'pointer',
+                                }}
+                                title="Edit User Account & Role"
+                              >
+                                <Edit2 size={16} />
+                              </button>
+
+                              <button
+                                onClick={() => handleDeleteUser(u.id, u.fullName)}
+                                style={{
+                                  color: '#ef4444',
+                                  padding: '6px',
+                                  borderRadius: '6px',
+                                  border: 'none',
+                                  background: 'transparent',
+                                  cursor: 'pointer',
+                                }}
+                                title="Delete User"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -382,56 +606,170 @@ export const UserManagementPage: React.FC = () => {
             </div>
           </div>
         ) : (
-          /* Roles Tab */
+          /* ============================================================================ */
+          /* ROLES & SYSTEM GROUPS TAB                                                    */
+          /* ============================================================================ */
           <div style={{ padding: '24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <div style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>Configured Roles</div>
+              <div>
+                <div style={{ fontSize: '16px', fontWeight: 800, color: '#0f172a' }}>Configured Roles & Groups</div>
+                <div style={{ fontSize: '13px', color: '#64748b', marginTop: '2px' }}>
+                  Define system roles, monitor assigned member counts, and configure access permissions.
+                </div>
+              </div>
               <Button variant="primary" icon={<Plus size={16} />} onClick={() => setIsAddRoleModalOpen(true)}>
                 Add Role
               </Button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
-              {roles.map((r) => (
-                <div
-                  key={r.id}
-                  style={{
-                    padding: '20px',
-                    borderRadius: '12px',
-                    border: '1px solid #e2e8f0',
-                    backgroundColor: '#ffffff',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '12px',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#eef2ff', color: '#4f46e5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Shield size={16} />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+              {roles.map((r) => {
+                const isSystemAdmin = r.id === 'admin';
+                const userCount = Number(r.usersCount || 0);
+
+                return (
+                  <div
+                    key={r.id}
+                    style={{
+                      padding: '22px',
+                      borderRadius: '14px',
+                      border: '1.5px solid #e2e8f0',
+                      backgroundColor: '#ffffff',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      gap: '14px',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+                    }}
+                  >
+                    <div>
+                      {/* Top Header of Card */}
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <div
+                            style={{
+                              width: '36px',
+                              height: '36px',
+                              borderRadius: '10px',
+                              backgroundColor: isSystemAdmin ? '#eef2ff' : '#f1f5f9',
+                              color: isSystemAdmin ? '#4f46e5' : '#334155',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            <Shield size={18} />
+                          </div>
+                          <div>
+                            <span style={{ fontSize: '16px', fontWeight: 800, color: '#0f172a' }}>{r.name}</span>
+                            <div style={{ fontSize: '11px', color: '#64748b', fontFamily: 'monospace' }}>
+                              role_id: {r.id}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Badges */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          {r.isSystemRole && (
+                            <span
+                              style={{
+                                padding: '2px 8px',
+                                borderRadius: '6px',
+                                backgroundColor: '#fef3c7',
+                                fontSize: '11px',
+                                fontWeight: 700,
+                                color: '#b45309',
+                              }}
+                            >
+                              System
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <span style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a' }}>{r.name}</span>
+
+                      {/* Description */}
+                      <p style={{ fontSize: '13px', color: '#64748b', marginTop: '12px', minHeight: '36px', lineHeight: 1.5 }}>
+                        {r.description || 'System access role for workspace permission governance.'}
+                      </p>
                     </div>
-                    <span style={{ padding: '3px 8px', borderRadius: '6px', backgroundColor: '#f1f5f9', fontSize: '11.5px', fontWeight: 600, color: '#64748b' }}>
-                      ID: {r.id}
-                    </span>
+
+                    {/* Bottom Metadata & Actions */}
+                    <div
+                      style={{
+                        paddingTop: '14px',
+                        borderTop: '1px solid #f1f5f9',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: '#475569' }}>
+                        <Users size={14} color="#64748b" />
+                        <span style={{ fontWeight: 700, color: '#0f172a' }}>{userCount}</span>
+                        <span>{userCount === 1 ? 'user assigned' : 'users assigned'}</span>
+                      </div>
+
+                      {/* Actions */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <button
+                          onClick={() => openEditRoleModal(r)}
+                          style={{
+                            padding: '6px 10px',
+                            borderRadius: '8px',
+                            border: '1px solid #e2e8f0',
+                            backgroundColor: '#ffffff',
+                            color: '#334155',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                          title="Edit role name & description"
+                        >
+                          <Edit2 size={13} /> Edit
+                        </button>
+
+                        <button
+                          onClick={() => openDeleteRoleModal(r)}
+                          disabled={isSystemAdmin}
+                          style={{
+                            padding: '6px 10px',
+                            borderRadius: '8px',
+                            border: '1px solid #fee2e2',
+                            backgroundColor: isSystemAdmin ? '#f8fafc' : '#fef2f2',
+                            color: isSystemAdmin ? '#94a3b8' : '#dc2626',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            cursor: isSystemAdmin ? 'not-allowed' : 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            opacity: isSystemAdmin ? 0.5 : 1,
+                          }}
+                          title={isSystemAdmin ? 'Admin role cannot be deleted' : 'Delete this role'}
+                        >
+                          <Trash2 size={13} /> Delete
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <p style={{ fontSize: '13px', color: '#64748b', minHeight: '38px', lineHeight: 1.4 }}>
-                    {r.description || 'System access role for workspace permission governance.'}
-                  </p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
       </div>
 
-      {/* Modal: Add User */}
+      {/* ============================================================================ */}
+      {/* MODAL: ADD NEW USER                                                          */}
+      {/* ============================================================================ */}
       <Modal
         isOpen={isAddUserModalOpen}
         onClose={() => setIsAddUserModalOpen(false)}
         title="Add New User"
-        subtitle="Create an account and assign workspace role."
+        subtitle="Create an account and assign a workspace role."
       >
         <form onSubmit={handleCreateUser} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <Input
@@ -488,11 +826,18 @@ export const UserManagementPage: React.FC = () => {
 
             <Input
               label="Department"
-              placeholder="e.g. IT, Engineering"
+              placeholder="e.g. Engineering, Sales"
               value={newDept}
               onChange={(e) => setNewDept(e.target.value)}
             />
           </div>
+
+          <Input
+            label="Phone Number"
+            placeholder="e.g. +91 98765 43210"
+            value={newPhone}
+            onChange={(e) => setNewPhone(e.target.value)}
+          />
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
             <Button variant="secondary" onClick={() => setIsAddUserModalOpen(false)}>
@@ -505,7 +850,99 @@ export const UserManagementPage: React.FC = () => {
         </form>
       </Modal>
 
-      {/* Modal: Add Role */}
+      {/* ============================================================================ */}
+      {/* MODAL: EDIT USER & ROLE                                                      */}
+      {/* ============================================================================ */}
+      <Modal
+        isOpen={isEditUserModalOpen}
+        onClose={() => setIsEditUserModalOpen(false)}
+        title="Edit User Account"
+        subtitle={`Modify user details and assign role for "${editingUser?.fullName}".`}
+      >
+        <form onSubmit={handleUpdateUser} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <Input
+            label="Full Name"
+            required
+            value={editFullName}
+            onChange={(e) => setEditFullName(e.target.value)}
+          />
+
+          <Input
+            label="Email Address"
+            required
+            type="email"
+            value={editEmail}
+            onChange={(e) => setEditEmail(e.target.value)}
+          />
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <div>
+              <label style={{ fontSize: '13.5px', fontWeight: 600, color: '#1e293b', marginBottom: '6px', display: 'block' }}>
+                Assigned Role *
+              </label>
+              <select
+                value={editRoleId}
+                onChange={(e) => setEditRoleId(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '11px 14px',
+                  borderRadius: '10px',
+                  border: '1.5px solid #e2e8f0',
+                  outline: 'none',
+                  fontSize: '14px',
+                  backgroundColor: '#ffffff',
+                  fontWeight: 600,
+                  color: '#0f172a',
+                }}
+              >
+                {roles.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <Input
+              label="Department"
+              value={editDept}
+              onChange={(e) => setEditDept(e.target.value)}
+            />
+          </div>
+
+          <Input
+            label="Phone Number"
+            value={editPhone}
+            onChange={(e) => setEditPhone(e.target.value)}
+          />
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '4px' }}>
+            <input
+              type="checkbox"
+              id="editIsActive"
+              checked={editIsActive}
+              onChange={(e) => setEditIsActive(e.target.checked)}
+              style={{ width: '18px', height: '18px', accentColor: '#4f46e5', cursor: 'pointer' }}
+            />
+            <label htmlFor="editIsActive" style={{ fontSize: '13.5px', fontWeight: 600, color: '#1e293b', cursor: 'pointer' }}>
+              Active User Account
+            </label>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
+            <Button variant="secondary" onClick={() => setIsEditUserModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" isLoading={isSubmitting}>
+              Save Changes
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* ============================================================================ */}
+      {/* MODAL: ADD NEW ROLE                                                          */}
+      {/* ============================================================================ */}
       <Modal
         isOpen={isAddRoleModalOpen}
         onClose={() => setIsAddRoleModalOpen(false)}
@@ -538,6 +975,7 @@ export const UserManagementPage: React.FC = () => {
                 outline: 'none',
                 fontSize: '13.5px',
                 fontFamily: 'inherit',
+                boxSizing: 'border-box',
               }}
             />
           </div>
@@ -551,6 +989,136 @@ export const UserManagementPage: React.FC = () => {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* ============================================================================ */}
+      {/* MODAL: EDIT ROLE                                                             */}
+      {/* ============================================================================ */}
+      <Modal
+        isOpen={isEditRoleModalOpen}
+        onClose={() => setIsEditRoleModalOpen(false)}
+        title="Edit Role"
+        subtitle={`Update display name and description for "${editingRole?.name}".`}
+      >
+        <form onSubmit={handleUpdateRole} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <Input
+            label="Role Name"
+            required
+            value={editRoleName}
+            onChange={(e) => setEditRoleName(e.target.value)}
+          />
+
+          <div>
+            <label style={{ fontSize: '13.5px', fontWeight: 600, color: '#1e293b', marginBottom: '6px', display: 'block' }}>
+              Description
+            </label>
+            <textarea
+              value={editRoleDesc}
+              onChange={(e) => setEditRoleDesc(e.target.value)}
+              rows={3}
+              style={{
+                width: '100%',
+                padding: '10px 14px',
+                borderRadius: '10px',
+                border: '1.5px solid #e2e8f0',
+                outline: 'none',
+                fontSize: '13.5px',
+                fontFamily: 'inherit',
+                boxSizing: 'border-box',
+              }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
+            <Button variant="secondary" onClick={() => setIsEditRoleModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" isLoading={isSubmitting}>
+              Save Changes
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* ============================================================================ */}
+      {/* MODAL: CONFIRM DELETE ROLE                                                   */}
+      {/* ============================================================================ */}
+      <Modal
+        isOpen={isDeleteRoleModalOpen}
+        onClose={() => setIsDeleteRoleModalOpen(false)}
+        title="Delete Role"
+        subtitle={`Are you sure you want to delete role "${roleToDelete?.name}"?`}
+      >
+        <div>
+          {roleToDelete?.usersCount > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '12px',
+                  padding: '14px',
+                  borderRadius: '10px',
+                  backgroundColor: '#fffbeb',
+                  border: '1px solid #fef3c7',
+                  color: '#b45309',
+                }}
+              >
+                <AlertTriangle size={20} style={{ flexShrink: 0, marginTop: '2px' }} />
+                <div style={{ fontSize: '13px', lineHeight: 1.5 }}>
+                  <strong>{roleToDelete.usersCount} active user(s)</strong> are currently assigned to this role.
+                  Please choose a role to reassign them to before deletion:
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '13.5px', fontWeight: 600, color: '#1e293b', marginBottom: '6px', display: 'block' }}>
+                  Reassign Active Users To:
+                </label>
+                <select
+                  value={reassignTargetRoleId}
+                  onChange={(e) => setReassignTargetRoleId(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '11px 14px',
+                    borderRadius: '10px',
+                    border: '1.5px solid #e2e8f0',
+                    outline: 'none',
+                    fontSize: '14px',
+                    backgroundColor: '#ffffff',
+                    fontWeight: 600,
+                    color: '#0f172a',
+                  }}
+                >
+                  {roles
+                    .filter((r) => r.id !== roleToDelete.id)
+                    .map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            </div>
+          ) : (
+            <p style={{ fontSize: '13.5px', color: '#64748b', lineHeight: 1.5 }}>
+              This role has no assigned users. Deleting it will permanently remove the role and its associated permissions.
+            </p>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px' }}>
+            <Button variant="secondary" onClick={() => setIsDeleteRoleModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={handleConfirmDeleteRole}
+              isLoading={isSubmitting}
+            >
+              {roleToDelete?.usersCount > 0 ? 'Reassign & Delete' : 'Confirm Delete'}
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

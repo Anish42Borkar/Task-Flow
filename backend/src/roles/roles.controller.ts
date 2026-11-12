@@ -3,8 +3,10 @@ import {
   Get,
   Post,
   Put,
+  Delete,
   Param,
   Body,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { RolesService, UpdateRolePermissionInput } from './roles.service';
@@ -27,6 +29,24 @@ export class RolesController {
   @Roles('admin')
   async createRole(@Body() body: { name: string; description?: string }) {
     return this.rolesService.createRole(body.name, body.description);
+  }
+
+  @Put('roles/:id')
+  @Roles('admin')
+  async updateRole(
+    @Param('id') roleId: string,
+    @Body() body: { name?: string; description?: string },
+  ) {
+    return this.rolesService.updateRole(roleId, body);
+  }
+
+  @Delete('roles/:id')
+  @Roles('admin')
+  async deleteRole(
+    @Param('id') roleId: string,
+    @Query('reassignTo') reassignTo?: string,
+  ) {
+    return this.rolesService.deleteRole(roleId, reassignTo);
   }
 
   @Get('permissions/:roleId')

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Inject } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Inject } from '@nestjs/common';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { eq, sql } from 'drizzle-orm';
 import { DRIZZLE_PROVIDER } from '../database/database.service';
@@ -66,6 +66,88 @@ export class RolesService {
     await this.db.insert(schema.rolePermissions).values(permissionEntries).onConflictDoNothing();
 
     return created;
+  }
+
+  async updateRole(roleId: string, update: { name?: string; description?: string }) {
+    const [existing] = await this.db
+      .select()
+      .from(schema.roles)
+      .where(eq(schema.roles.id, roleId))
+      .limit(1);
+
+    if (!existing) {
+      throw new NotFoundException(`Role ${roleId} not found`);
+    }
+
+    const updateData: Partial<schema.Role> = {};
+    if (update.name !== undefined && update.name.trim()) updateData.name = update.name.trim();
+    if (update.description !== undefined) updateData.description = update.description.trim() || null;
+
+    const [updated] = await this.db
+      .update(schema.roles)
+      .set(updateData)
+      .where(eq(schema.roles.id, roleId))
+      .returning();
+
+    return updated;
+  }
+
+  async deleteRole(roleId: string, reassignTo?: string) {
+    const [role] = await this.db
+      .select()
+      .from(schema.roles)
+      .where(eq(schema.roles.id, roleId))
+      .limit(1);
+
+    if (!role) {
+      throw new NotFoundException(`Role ${roleId} not found`);
+    }
+
+    if (roleId === 'admin') {
+      throw new BadRequestException('The Administrator role is essential and cannot be deleted.');
+    }
+
+    // Check if any users have this role
+    const [userCountRes] = await this.db
+      .select({ count: sql<number>`count(*)` })
+      .from(schema.users)
+      .where(eq(schema.users.roleId, roleId));
+
+    const count = Number(userCountRes?.count || 0);
+    if (count > 0) {
+      if (reassignTo) {
+        if (reassignTo === roleId) {
+          throw new BadRequestException('Cannot reassign users to the role being deleted.');
+        }
+        const [targetRole] = await this.db
+          .select()
+          .from(schema.roles)
+          .where(eq(schema.roles.id, reassignTo))
+          .limit(1);
+
+        if (!targetRole) {
+          throw new BadRequestException(`Reassignment target role "${reassignTo}" does not exist.`);
+        }
+
+        // Reassign users to targetRole
+        await this.db
+          .update(schema.users)
+          .set({ roleId: reassignTo, updatedAt: new Date() })
+          .where(eq(schema.users.roleId, roleId));
+      } else {
+        throw new BadRequestException(
+          `Cannot delete role "${role.name}" because ${count} active user(s) are assigned to it. Please reassign those users to another role first.`,
+        );
+      }
+    }
+
+    // Delete role permissions
+    await this.db.delete(schema.rolePermissions).where(eq(schema.rolePermissions.roleId, roleId));
+
+    // Delete role
+    await this.db.delete(schema.roles).where(eq(schema.roles.id, roleId));
+
+    return { success: true, message: `Role "${role.name}" has been successfully deleted.` };
   }
 
   async getRolePermissions(roleId: string) {

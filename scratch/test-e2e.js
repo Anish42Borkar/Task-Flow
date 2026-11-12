@@ -250,6 +250,60 @@ async function runE2ETests() {
     'User can mark all notifications as read',
   );
 
+  // TEST 13: System Settings API (Application Name, Timezone, Date Format)
+  console.log('\n--- 9. SYSTEM SETTINGS PERSISTENCE & API INTEGRATION ---');
+  const getSettingsRes = await fetch(`${API_BASE}/settings`, {
+    headers: { Authorization: `Bearer ${adminToken}` },
+  }).then((r) => r.json());
+
+  assert(
+    getSettingsRes.success && getSettingsRes.data?.appName,
+    `Admin can fetch system settings (Current App Name: "${getSettingsRes.data?.appName}")`,
+  );
+
+  const updatedSettings = await fetch(`${API_BASE}/settings`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${adminToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      appName: 'TaskFlow Enterprise',
+      timezone: '(GMT+05:30) India Standard Time',
+      dateFormat: 'DD MMM, YYYY (e.g. 28 Oct, 2026)',
+    }),
+  }).then((r) => r.json());
+
+  assert(
+    updatedSettings.success && updatedSettings.data?.appName === 'TaskFlow Enterprise',
+    'Admin successfully updated Application Name to "TaskFlow Enterprise"',
+  );
+
+  const verifySettings = await fetch(`${API_BASE}/settings`, {
+    headers: { Authorization: `Bearer ${adminToken}` },
+  }).then((r) => r.json());
+
+  assert(
+    verifySettings.data?.appName === 'TaskFlow Enterprise' &&
+      verifySettings.data?.timezone === '(GMT+05:30) India Standard Time' &&
+      verifySettings.data?.dateFormat === 'DD MMM, YYYY (e.g. 28 Oct, 2026)',
+    'Settings changes verified persisted in PostgreSQL across queries',
+  );
+
+  // Reset back to standard default
+  await fetch(`${API_BASE}/settings`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${adminToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      appName: 'TaskFlow',
+      timezone: '(GMT+05:30) India Standard Time',
+      dateFormat: 'DD MMM, YYYY (e.g. 28 Oct, 2026)',
+    }),
+  });
+
   console.log('\n====================================================');
   console.log(`SUMMARY: ${passed} PASSED | ${failed} FAILED`);
   console.log('====================================================');

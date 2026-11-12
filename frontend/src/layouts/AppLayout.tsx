@@ -20,10 +20,12 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useNotificationStore } from '../stores/notificationStore';
+import { useSettingsStore } from '../stores/settingsStore';
 import { ToastContainer } from '../components/feedback/ToastContainer';
 
 export const AppLayout: React.FC = () => {
   const { user, logout } = useAuthStore();
+  const { appName, fetchSettings } = useSettingsStore();
   const {
     notifications,
     unreadCount,
@@ -45,8 +47,9 @@ export const AppLayout: React.FC = () => {
   useEffect(() => {
     if (user?.id) {
       fetchNotifications();
+      fetchSettings();
     }
-  }, [user?.id, fetchNotifications]);
+  }, [user?.id, fetchNotifications, fetchSettings]);
 
   // Click outside listener for dropdowns
   useEffect(() => {
@@ -128,7 +131,7 @@ export const AppLayout: React.FC = () => {
           </div>
           {sidebarOpen && (
             <span style={{ fontSize: '19px', fontWeight: 700, letterSpacing: '-0.3px' }}>
-              TaskFlow
+              {appName || 'TaskFlow'}
             </span>
           )}
         </div>

@@ -18,7 +18,7 @@ import { ProjectMemberGuard } from './guards/project-member.guard';
       useFactory: (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_SECRET', 'taskflow_super_secret_jwt_key_2026_dev_mode'),
         signOptions: {
-          expiresIn: configService.get<string>('JWT_EXPIRATION', '7d'),
+          expiresIn: configService.get<string>('JWT_EXPIRATION', '15m'),
         },
       }),
     }),

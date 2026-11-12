@@ -7,6 +7,36 @@ All endpoints are prefixed with `/api`. Protected routes require a Bearer token 
 
 ## 1. Authentication & Profile (`/api/auth`)
 
+### `POST /api/auth/register`
+- **Access:** Public
+- **Request Body:**
+  ```json
+  {
+    "fullName": "Alex Johnson",
+    "email": "alex.johnson@example.com",
+    "password": "Password123!",
+    "department": "Engineering",
+    "phone": "+91 98765 43210"
+  }
+  ```
+- **Response (201 Created):**
+  ```json
+  {
+    "accessToken": "eyJhbGciOi...",
+    "refreshToken": "eyJhbGciOi...",
+    "user": {
+      "id": "c1f7b8a0-...",
+      "fullName": "Alex Johnson",
+      "email": "alex.johnson@example.com",
+      "role": "user",
+      "department": "Engineering",
+      "phone": "+91 98765 43210",
+      "isActive": true,
+      "createdAt": "2026-11-12T18:15:00.000Z"
+    }
+  }
+  ```
+
 ### `POST /api/auth/login`
 - **Access:** Public
 - **Request Body:**
@@ -20,6 +50,7 @@ All endpoints are prefixed with `/api`. Protected routes require a Bearer token 
   ```json
   {
     "accessToken": "eyJhbGciOi...",
+    "refreshToken": "eyJhbGciOi...",
     "user": {
       "id": "c1f7b8a0-...",
       "fullName": "Anish Borkar",
@@ -27,6 +58,48 @@ All endpoints are prefixed with `/api`. Protected routes require a Bearer token 
       "role": "admin",
       "department": "IT"
     }
+  }
+  ```
+
+### `POST /api/auth/refresh`
+- **Access:** Public
+- **Request Body:**
+  ```json
+  {
+    "refreshToken": "eyJhbGciOi..."
+  }
+  ```
+- **Response (200 OK):**
+  ```json
+  {
+    "accessToken": "eyJhbGciOi...",
+    "refreshToken": "eyJhbGciOi..."
+  }
+  ```
+
+### `POST /api/auth/logout`
+- **Access:** Public
+- **Request Body:**
+  ```json
+  {
+    "refreshToken": "eyJhbGciOi..."
+  }
+  ```
+- **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "message": "Logged out successfully"
+  }
+  ```
+
+### `POST /api/auth/logout-all`
+- **Access:** Protected (Requires `Authorization: Bearer <accessToken>`)
+- **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "message": "Logged out from all active sessions"
   }
   ```
 

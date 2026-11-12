@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Mail, Lock, Eye, EyeOff, Zap, Users, BarChart3, Check } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { Button } from '../../components/common/Button';
@@ -31,7 +31,7 @@ export const LoginPage: React.FC = () => {
       });
 
       if (res?.accessToken && res?.user) {
-        setAuth(res.user, res.accessToken);
+        setAuth(res.user, res.accessToken, res.refreshToken);
         navigate('/dashboard');
       } else {
         throw new Error('Invalid response from server');
@@ -482,9 +482,9 @@ export const LoginPage: React.FC = () => {
           {/* Footer */}
           <div style={{ textAlign: 'center', marginTop: '28px', fontSize: '13px', color: '#64748b' }}>
             Don't have an account?{' '}
-            <a href="mailto:admin@taskflow.com" style={{ color: '#4f46e5', fontWeight: 600 }}>
-              Contact Admin
-            </a>
+            <Link to="/register" style={{ color: '#4f46e5', fontWeight: 700, textDecoration: 'none' }}>
+              Create an account
+            </Link>
           </div>
         </div>
       </div>

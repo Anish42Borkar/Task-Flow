@@ -23,8 +23,13 @@
   - Frontend `src/services/socket.ts` connects automatically, updates UI optimistically and in real time without refreshing.
 - [x] **Authentication & RBAC:**
   - Password hashing with `bcrypt` (10 salt rounds).
-  - JWT strategy and token issuance (`POST /api/auth/login`).
+  - Public registration (`POST /api/auth/register`) with input validation and duplicate detection.
+  - Dual-token architecture: short-lived `accessToken` (15m) + secure rotating `refreshToken` (7d).
+  - Refresh token persistence in PostgreSQL (`refresh_tokens` table) with SHA-256 hash indexing.
+  - Automatic refresh token rotation and replay attack mitigation (`POST /api/auth/refresh`).
+  - Server-side token invalidation & session termination (`POST /api/auth/logout`, `POST /api/auth/logout-all`).
   - Guards: `JwtAuthGuard`, `RolesGuard` (`@Roles('admin')`), and `ProjectMemberGuard` (enforcing project isolation).
+  - Frontend transparent Axios token refresh interceptor and dedicated `RegisterPage` UI.
 - [x] **Project Management:**
   - `GET /api/projects` (Admin views all projects; regular users view only member projects).
   - `POST /api/projects` (Create project with member assignments).

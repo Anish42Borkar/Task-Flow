@@ -6,6 +6,7 @@ import { projectMembers } from './project-members.schema';
 import { tasks } from './tasks.schema';
 import { taskAssignees } from './task-assignees.schema';
 import { notifications } from './notifications.schema';
+import { refreshTokens } from './refresh-tokens.schema';
 
 // Roles Relations
 export const rolesRelations = relations(roles, ({ many }) => ({
@@ -31,6 +32,7 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   tasksCreated: many(tasks),
   taskAssignments: many(taskAssignees),
   notifications: many(notifications),
+  refreshTokens: many(refreshTokens),
 }));
 
 // Projects Relations
@@ -84,6 +86,14 @@ export const taskAssigneesRelations = relations(taskAssignees, ({ one }) => ({
 export const notificationsRelations = relations(notifications, ({ one }) => ({
   user: one(users, {
     fields: [notifications.userId],
+    references: [users.id],
+  }),
+}));
+
+// Refresh Tokens Relations
+export const refreshTokensRelations = relations(refreshTokens, ({ one }) => ({
+  user: one(users, {
+    fields: [refreshTokens.userId],
     references: [users.id],
   }),
 }));

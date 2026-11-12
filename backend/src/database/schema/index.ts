@@ -5,5 +5,6 @@ export * from './project-members.schema';
 export * from './tasks.schema';
 export * from './task-assignees.schema';
 export * from './notifications.schema';
+export * from './refresh-tokens.schema';
 export * from './settings.schema';
 export * from './relations';

@@ -4,6 +4,7 @@ import { Loader2 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { AppLayout } from '../layouts/AppLayout';
 import { LoginPage } from '../pages/auth/LoginPage';
+import { RegisterPage } from '../pages/auth/RegisterPage';
 import { DashboardPage } from '../pages/dashboard/DashboardPage';
 import { ProjectsPage } from '../pages/projects/ProjectsPage';
 import { TasksPage } from '../pages/tasks/TasksPage';
@@ -39,10 +40,14 @@ export const AppRoutes: React.FC = () => {
 
   return (
     <Routes>
-      {/* Public Route */}
+      {/* Public Routes */}
       <Route
         path="/login"
         element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />}
+      />
+      <Route
+        path="/register"
+        element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <RegisterPage />}
       />
 
       {/* Main Layout Protected Routes */}

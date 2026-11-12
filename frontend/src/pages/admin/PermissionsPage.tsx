@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../../components/common/Button';
 import { useNotificationStore } from '../../stores/notificationStore';
+import { useAuthStore } from '../../stores/authStore';
 import { api } from '../../services/api';
 
 interface PermissionRow {
@@ -137,6 +138,7 @@ export const PermissionsPage: React.FC = () => {
 
       await api.put(`/permissions/${selectedRoleId}`, { permissions: payload });
       addToast('Permissions Saved', `Role permissions updated successfully`, 'success');
+      useAuthStore.getState().fetchProfile();
     } catch (err: any) {
       addToast('Save Failed', err.message || 'Could not update permissions', 'error');
     } finally {

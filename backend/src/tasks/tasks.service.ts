@@ -5,7 +5,7 @@ import {
   Inject,
 } from '@nestjs/common';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { eq, inArray, desc, asc, sql } from 'drizzle-orm';
+import { eq, inArray, desc, asc, sql, and } from 'drizzle-orm';
 import { DRIZZLE_PROVIDER } from '../database/database.service';
 import * as schema from '../database/schema';
 import { CreateTaskDto } from './dto/create-task.dto';
@@ -21,6 +21,66 @@ export class TasksService {
     private readonly notificationsService: NotificationsService,
   ) {}
 
+  private async assertTaskPermission(
+    actor: { id: string; role: string },
+    projectId: string,
+    action: 'canView' | 'canCreate' | 'canEdit' | 'canDelete',
+  ) {
+    if (!actor) {
+      throw new ForbiddenException('User context not found');
+    }
+
+    if (actor.role === 'admin') {
+      return;
+    }
+
+    if (actor.role === 'viewer' && action !== 'canView') {
+      throw new ForbiddenException(
+        'Access denied. Viewers have read-only permissions and cannot modify tasks.',
+      );
+    }
+
+    const [perm] = await this.db
+      .select({
+        canView: schema.rolePermissions.canView,
+        canCreate: schema.rolePermissions.canCreate,
+        canEdit: schema.rolePermissions.canEdit,
+        canDelete: schema.rolePermissions.canDelete,
+      })
+      .from(schema.rolePermissions)
+      .where(
+        and(
+          eq(schema.rolePermissions.roleId, actor.role),
+          eq(schema.rolePermissions.module, 'tasks'),
+        ),
+      )
+      .limit(1);
+
+    if (!perm || !perm[action]) {
+      const verb = action.replace(/^can([A-Z])/, (_, c) => c.toLowerCase());
+      throw new ForbiddenException(
+        `Access denied. You do not have permission to ${verb} tasks.`,
+      );
+    }
+
+    if (projectId) {
+      const [membership] = await this.db
+        .select({ id: schema.projectMembers.id })
+        .from(schema.projectMembers)
+        .where(
+          and(
+            eq(schema.projectMembers.projectId, projectId),
+            eq(schema.projectMembers.userId, actor.id),
+          ),
+        )
+        .limit(1);
+
+      if (!membership) {
+        throw new ForbiddenException('Access denied. You are not a member of this project.');
+      }
+    }
+  }
+
   async getAllTasksForUser(actor: { id: string; role: string }) {
     let projectIds: string[] = [];
 
@@ -28,6 +88,21 @@ export class TasksService {
       const allProjects = await this.db.select({ id: schema.projects.id }).from(schema.projects);
       projectIds = allProjects.map((p) => p.id);
     } else {
+      const [perm] = await this.db
+        .select({ canView: schema.rolePermissions.canView })
+        .from(schema.rolePermissions)
+        .where(
+          and(
+            eq(schema.rolePermissions.roleId, actor.role),
+            eq(schema.rolePermissions.module, 'tasks'),
+          ),
+        )
+        .limit(1);
+
+      if (perm && !perm.canView) {
+        return [];
+      }
+
       const memberships = await this.db
         .select({ projectId: schema.projectMembers.projectId })
         .from(schema.projectMembers)
@@ -176,6 +251,8 @@ export class TasksService {
   }
 
   async createTask(projectId: string, dto: CreateTaskDto, actor: any) {
+    await this.assertTaskPermission(actor, projectId, 'canCreate');
+
     // 1. Calculate next orderIndex
     const [maxOrderResult] = await this.db
       .select({ maxOrder: sql<number>`coalesce(max(${schema.tasks.orderIndex}), 0)` })
@@ -254,6 +331,8 @@ export class TasksService {
       throw new NotFoundException(`Task with ID ${id} not found`);
     }
 
+    await this.assertTaskPermission(actor, existing.projectId, 'canEdit');
+
     const updatePayload: Partial<schema.Task> = { updatedAt: new Date() };
     if (dto.title) updatePayload.title = dto.title.trim();
     if (dto.description !== undefined) updatePayload.description = dto.description?.trim() || null;
@@ -314,6 +393,8 @@ export class TasksService {
       throw new NotFoundException(`Task with ID ${id} not found`);
     }
 
+    await this.assertTaskPermission(actor, existing.projectId, 'canEdit');
+
     const [updated] = await this.db
       .update(schema.tasks)
       .set({ status, updatedAt: new Date() })
@@ -367,6 +448,8 @@ export class TasksService {
       }
     }
 
+    await this.assertTaskPermission(actor, projectId, 'canEdit');
+
     // Persist new ordering by updating order_index for each task
     for (let index = 0; index < orderedTaskIds.length; index++) {
       const taskId = orderedTaskIds[index];
@@ -389,10 +472,6 @@ export class TasksService {
   }
 
   async deleteTask(id: string, actor: any) {
-    if (actor.role !== 'admin') {
-      throw new ForbiddenException('Only administrators are permitted to delete tasks');
-    }
-
     const [existing] = await this.db
       .select({ id: schema.tasks.id, projectId: schema.tasks.projectId })
       .from(schema.tasks)
@@ -402,6 +481,8 @@ export class TasksService {
     if (!existing) {
       throw new NotFoundException(`Task with ID ${id} not found`);
     }
+
+    await this.assertTaskPermission(actor, existing.projectId, 'canDelete');
 
     await this.db.delete(schema.tasks).where(eq(schema.tasks.id, id));
 

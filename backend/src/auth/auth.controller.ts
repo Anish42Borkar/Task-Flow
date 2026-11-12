@@ -68,6 +68,18 @@ export class AuthController {
     return this.authService.getMe(userId);
   }
 
+  @Get('profile')
+  @UseGuards(JwtAuthGuard)
+  async getProfile(@CurrentUser('id') userId: string) {
+    return this.authService.getMe(userId);
+  }
+
+  @Get('permissions')
+  @UseGuards(JwtAuthGuard)
+  async getPermissions(@CurrentUser('id') userId: string) {
+    return this.authService.getMe(userId);
+  }
+
   @Put('profile')
   @UseGuards(JwtAuthGuard)
   async updateProfile(

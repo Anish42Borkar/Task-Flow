@@ -53,7 +53,7 @@ export const RegisterPage: React.FC = () => {
       });
 
       if (res?.accessToken && res?.user) {
-        setAuth(res.user, res.accessToken, res.refreshToken);
+        setAuth(res.user, res.accessToken, res.refreshToken, res.permissions);
         navigate('/dashboard');
       } else {
         throw new Error('Unexpected response format from server');

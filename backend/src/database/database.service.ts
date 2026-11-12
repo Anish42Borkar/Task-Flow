@@ -5,6 +5,7 @@ import { drizzle, NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as crypto from 'crypto';
 import * as schema from './schema';
 
 export const DRIZZLE_PROVIDER = 'DRIZZLE_PROVIDER';
@@ -80,12 +81,75 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
 
     const migrationFolder = possibleMigrationPaths.find((p) => fs.existsSync(p));
 
-    if (migrationFolder) {
+    if (!migrationFolder) {
+      this.logger.warn('Drizzle migration folder not found at runtime; relying on table verification.');
+      return;
+    }
+
+    try {
+      // 1. Ensure drizzle schema and migrations tracking table exist
+      await this.pool.query(`
+        CREATE SCHEMA IF NOT EXISTS "drizzle";
+        CREATE TABLE IF NOT EXISTS "drizzle"."__drizzle_migrations" (
+          id SERIAL PRIMARY KEY,
+          hash text NOT NULL,
+          created_at bigint
+        );
+      `);
+
+      // 2. Check if tables already exist in PostgreSQL (e.g. from prior setup/seed)
+      const tableCheck = await this.pool.query(`
+        SELECT EXISTS (
+          SELECT 1 FROM information_schema.tables 
+          WHERE table_schema = 'public' 
+          AND table_name = 'role_permissions'
+        ) as exists;
+      `);
+
+      const tablesExist = Boolean(tableCheck.rows[0]?.exists);
+
+      if (tablesExist) {
+        const migrationCheck = await this.pool.query(`
+          SELECT count(*) as count FROM "drizzle"."__drizzle_migrations";
+        `);
+        const recordedCount = Number(migrationCheck.rows[0]?.count || 0);
+
+        if (recordedCount === 0) {
+          // Tables were previously created; record existing migrations to prevent duplicate table creation errors
+          const journalPath = path.join(migrationFolder, 'meta', '_journal.json');
+          if (fs.existsSync(journalPath)) {
+            const journal = JSON.parse(fs.readFileSync(journalPath, 'utf8'));
+            for (const entry of journal.entries || []) {
+              const sqlPath = path.join(migrationFolder, `${entry.tag}.sql`);
+              let hash = 'migrated';
+              if (fs.existsSync(sqlPath)) {
+                const sqlContent = fs.readFileSync(sqlPath, 'utf8');
+                hash = crypto.createHash('sha256').update(sqlContent).digest('hex');
+              }
+              await this.pool.query(
+                `INSERT INTO "drizzle"."__drizzle_migrations" ("hash", "created_at") VALUES ($1, $2);`,
+                [hash, entry.when],
+              );
+            }
+            this.logger.log('Existing database tables detected. Synchronized Drizzle migration records.');
+            return;
+          }
+        }
+      }
+
       this.logger.log(`Running database migrations from: ${migrationFolder}`);
       await migrate(this.db, { migrationsFolder: migrationFolder });
       this.logger.log('Database migrations applied successfully.');
-    } else {
-      this.logger.warn('Drizzle migration folder not found at runtime; relying on table verification.');
+    } catch (err: any) {
+      if (
+        err.message?.includes('already exists') ||
+        err.code === '42P07' ||
+        err.code === '42710'
+      ) {
+        this.logger.log('Database tables already synchronized in PostgreSQL.');
+      } else {
+        throw err;
+      }
     }
   }
 

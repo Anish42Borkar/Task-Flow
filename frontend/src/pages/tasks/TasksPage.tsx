@@ -43,9 +43,14 @@ interface LiveProject {
 }
 
 export const TasksPage: React.FC = () => {
-  const { user } = useAuthStore();
+  const { user, hasPermission } = useAuthStore();
   const { addToast } = useNotificationStore();
   const isAdmin = user?.role === "admin";
+  const isViewer = user?.role === "viewer";
+  const canViewTasks = isAdmin || hasPermission("tasks", "canView");
+  const canCreateTasks = !isViewer && (isAdmin || hasPermission("tasks", "canCreate"));
+  const canEditTasks = !isViewer && (isAdmin || hasPermission("tasks", "canEdit"));
+  const canDeleteTasks = !isViewer && (isAdmin || hasPermission("tasks", "canDelete"));
   const [searchParams, setSearchParams] = useSearchParams();
 
   const urlProjectId =
@@ -283,6 +288,14 @@ export const TasksPage: React.FC = () => {
   // Handle Create Task
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canCreateTasks) {
+      addToast(
+        "Permission Denied",
+        "You do not have permission to create tasks",
+        "error",
+      );
+      return;
+    }
     if (!createTitle.trim() || !createProjectId) return;
 
     try {
@@ -329,6 +342,14 @@ export const TasksPage: React.FC = () => {
 
   // Handle Edit Task
   const openEditModal = (task: Task) => {
+    if (!canEditTasks) {
+      addToast(
+        "Permission Denied",
+        "You do not have permission to edit tasks",
+        "error",
+      );
+      return;
+    }
     setEditingTask(task);
     setEditTitle(task.title);
     setEditDesc(task.description || "");
@@ -341,6 +362,14 @@ export const TasksPage: React.FC = () => {
 
   const handleUpdateTask = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canEditTasks) {
+      addToast(
+        "Permission Denied",
+        "You do not have permission to edit tasks",
+        "error",
+      );
+      return;
+    }
     if (!editingTask || !editTitle.trim()) return;
 
     try {
@@ -366,6 +395,14 @@ export const TasksPage: React.FC = () => {
 
   // Handle Status Quick Change
   const handleStatusChange = async (taskId: string, newStatus: string) => {
+    if (!canEditTasks) {
+      addToast(
+        "Permission Denied",
+        "You do not have permission to update task status",
+        "error",
+      );
+      return;
+    }
     const targetStatus = newStatus as TaskStatus;
     setTasks((prev) =>
       prev.map((t) => (t.id === taskId ? { ...t, status: targetStatus } : t)),
@@ -383,12 +420,12 @@ export const TasksPage: React.FC = () => {
     }
   };
 
-  // Handle Delete Task (Admin Only)
+  // Handle Delete Task
   const handleDeleteTask = async (id: string, title: string) => {
-    if (!isAdmin) {
+    if (!canDeleteTasks) {
       addToast(
         "Permission Denied",
-        "Only administrators can delete tasks",
+        "You do not have permission to delete tasks",
         "error",
       );
       return;
@@ -414,6 +451,15 @@ export const TasksPage: React.FC = () => {
     targetProjectId: string,
     orderedTaskIds: string[],
   ) => {
+    if (!canEditTasks) {
+      addToast(
+        "Permission Denied",
+        "You do not have permission to reorder tasks",
+        "error",
+      );
+      fetchTasks();
+      return;
+    }
     try {
       await api.patch(`/projects/${targetProjectId}/tasks/reorder`, {
         orderedTaskIds,
@@ -435,6 +481,14 @@ export const TasksPage: React.FC = () => {
 
   // 1-Click Move Up / Move Down buttons for Accessibility
   const handleMoveTask = async (taskId: string, direction: "up" | "down") => {
+    if (!canEditTasks) {
+      addToast(
+        "Permission Denied",
+        "You do not have permission to reorder tasks",
+        "error",
+      );
+      return;
+    }
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
 
@@ -468,6 +522,15 @@ export const TasksPage: React.FC = () => {
 
   // Table Row Drag Events
   const handleDragStart = (e: React.DragEvent, taskId: string) => {
+    if (!canEditTasks) {
+      e.preventDefault();
+      addToast(
+        "Permission Denied",
+        "You do not have permission to reorder tasks",
+        "error",
+      );
+      return;
+    }
     setDraggedTaskId(taskId);
     e.dataTransfer.setData("text/plain", taskId);
     e.dataTransfer.effectAllowed = "move";
@@ -595,6 +658,14 @@ export const TasksPage: React.FC = () => {
     targetStatus: TaskStatus,
   ) => {
     e.preventDefault();
+    if (!canEditTasks) {
+      addToast(
+        "Permission Denied",
+        "You do not have permission to modify task status",
+        "error",
+      );
+      return;
+    }
     const taskId = e.dataTransfer.getData("text/plain") || draggedTaskId;
     setDraggedTaskId(null);
     setDragOverColumn(null);
@@ -661,6 +732,46 @@ export const TasksPage: React.FC = () => {
       badgeColor: "#15803d",
     },
   ];
+
+  if (!canViewTasks) {
+    return (
+      <div style={{ padding: "40px 20px", textAlign: "center" }}>
+        <div
+          style={{
+            maxWidth: "480px",
+            margin: "40px auto",
+            backgroundColor: "#ffffff",
+            padding: "36px",
+            borderRadius: "16px",
+            border: "1px solid #e2e8f0",
+            boxShadow: "0 1px 3px rgba(15, 23, 42, 0.04)",
+          }}
+        >
+          <div
+            style={{
+              width: "48px",
+              height: "48px",
+              borderRadius: "50%",
+              backgroundColor: "#fef2f2",
+              color: "#ef4444",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto 16px",
+            }}
+          >
+            <AlertCircle size={24} />
+          </div>
+          <h2 style={{ fontSize: "18px", fontWeight: 700, color: "#0f172a", marginBottom: "8px" }}>
+            Access Denied
+          </h2>
+          <p style={{ fontSize: "14px", color: "#64748b", lineHeight: 1.5 }}>
+            You do not have permission to view tasks. Please contact your system administrator if you believe this is in error.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -795,20 +906,51 @@ export const TasksPage: React.FC = () => {
             )}
           </div>
 
-          <Button
-            variant="primary"
-            icon={<Plus size={16} />}
-            onClick={() => {
-              if (selectedProjectId !== "all") {
-                setCreateProjectId(selectedProjectId);
-              }
-              setIsCreateModalOpen(true);
-            }}
-          >
-            Create Task
-          </Button>
+          {canCreateTasks && (
+            <Button
+              variant="primary"
+              icon={<Plus size={16} />}
+              onClick={() => {
+                if (selectedProjectId !== "all") {
+                  setCreateProjectId(selectedProjectId);
+                }
+                setIsCreateModalOpen(true);
+              }}
+            >
+              Create Task
+            </Button>
+          )}
         </div>
       </div>
+
+      {/* Read-Only Notice Banner */}
+      {(!canEditTasks || !canCreateTasks) && (
+        <div
+          style={{
+            backgroundColor: "#f8fafc",
+            border: "1px solid #e2e8f0",
+            borderRadius: "12px",
+            padding: "12px 18px",
+            marginBottom: "20px",
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            color: "#475569",
+            fontSize: "13px",
+          }}
+        >
+          <AlertCircle size={18} color="#64748b" />
+          <span>
+            {isViewer
+              ? "You have Viewer access to tasks. Editing, creating, and reordering are disabled."
+              : !canEditTasks && !canCreateTasks
+              ? "You currently have read-only access to tasks. Editing and creation permissions have been restricted."
+              : !canEditTasks
+              ? "Editing permissions have been restricted for your role. You cannot edit tasks, update status, or reorder."
+              : "Task creation is disabled for your role."}
+          </span>
+        </div>
+      )}
 
       {/* Task Summary Stat Cards */}
       <div
@@ -1283,15 +1425,15 @@ export const TasksPage: React.FC = () => {
                     return (
                       <tr
                         key={task.id}
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, task.id)}
-                        onDragOver={(e) => handleDragOver(e, task.id)}
-                        onDragLeave={handleDragLeave}
-                        onDrop={(e) => handleDrop(e, task.id)}
-                        onDragEnd={handleDragEnd}
+                        draggable={canEditTasks}
+                        onDragStart={canEditTasks ? (e) => handleDragStart(e, task.id) : undefined}
+                        onDragOver={canEditTasks ? (e) => handleDragOver(e, task.id) : undefined}
+                        onDragLeave={canEditTasks ? handleDragLeave : undefined}
+                        onDrop={canEditTasks ? (e) => handleDrop(e, task.id) : undefined}
+                        onDragEnd={canEditTasks ? handleDragEnd : undefined}
                         style={{
                           borderBottom: "1px solid #f1f5f9",
-                          cursor: "grab",
+                          cursor: canEditTasks ? "grab" : "default",
                           transition: "all 0.15s ease",
                           opacity: isBeingDragged ? 0.45 : 1,
                           backgroundColor: isBeingDragged
@@ -1321,63 +1463,69 @@ export const TasksPage: React.FC = () => {
                             color: "#94a3b8",
                           }}
                         >
-                          <div
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "4px",
-                            }}
-                          >
-                            <span
-                              title="Drag to reorder"
-                              style={{ cursor: "grab" }}
-                            >
-                              <GripVertical size={16} />
-                            </span>
+                          {canEditTasks ? (
                             <div
                               style={{
                                 display: "inline-flex",
-                                flexDirection: "column",
+                                alignItems: "center",
+                                gap: "4px",
                               }}
                             >
-                              <button
-                                onClick={() => handleMoveTask(task.id, "up")}
-                                disabled={!canMoveUp}
-                                title="Move task up"
+                              <span
+                                title="Drag to reorder"
+                                style={{ cursor: "grab" }}
+                              >
+                                <GripVertical size={16} />
+                              </span>
+                              <div
                                 style={{
-                                  background: "none",
-                                  border: "none",
-                                  cursor: canMoveUp ? "pointer" : "default",
-                                  opacity: canMoveUp ? 0.7 : 0.2,
-                                  padding: 0,
-                                  lineHeight: 1,
+                                  display: "inline-flex",
+                                  flexDirection: "column",
                                 }}
                               >
-                                <ChevronUp
-                                  size={12}
-                                  color={canMoveUp ? "#4f46e5" : "#94a3b8"}
-                                />
-                              </button>
-                              <button
-                                onClick={() => handleMoveTask(task.id, "down")}
-                                disabled={!canMoveDown}
-                                title="Move task down"
-                                style={{
-                                  background: "none",
-                                  border: "none",
-                                  cursor: canMoveDown ? "pointer" : "default",
-                                  opacity: canMoveDown ? 0.7 : 0.2,
-                                  padding: 0,
-                                  lineHeight: 1,
-                                }}
-                              >
-                                <ChevronDown
-                                  size={12}
-                                  color={canMoveDown ? "#4f46e5" : "#94a3b8"}
-                                />
-                              </button>
+                                <button
+                                  onClick={() => handleMoveTask(task.id, "up")}
+                                  disabled={!canMoveUp}
+                                  title="Move task up"
+                                  style={{
+                                    background: "none",
+                                    border: "none",
+                                    cursor: canMoveUp ? "pointer" : "default",
+                                    opacity: canMoveUp ? 0.7 : 0.2,
+                                    padding: 0,
+                                    lineHeight: 1,
+                                  }}
+                                >
+                                  <ChevronUp
+                                    size={12}
+                                    color={canMoveUp ? "#4f46e5" : "#94a3b8"}
+                                  />
+                                </button>
+                                <button
+                                  onClick={() => handleMoveTask(task.id, "down")}
+                                  disabled={!canMoveDown}
+                                  title="Move task down"
+                                  style={{
+                                    background: "none",
+                                    border: "none",
+                                    cursor: canMoveDown ? "pointer" : "default",
+                                    opacity: canMoveDown ? 0.7 : 0.2,
+                                    padding: 0,
+                                    lineHeight: 1,
+                                  }}
+                                >
+                                  <ChevronDown
+                                    size={12}
+                                    color={canMoveDown ? "#4f46e5" : "#94a3b8"}
+                                  />
+                                </button>
+                              </div>
                             </div>
-                          </div>
+                          ) : (
+                            <span style={{ fontSize: "12px", color: "#94a3b8", fontWeight: 600 }}>
+                              #{index + 1}
+                            </span>
+                          )}
                         </td>
 
                         {/* Order Number */}
@@ -1533,39 +1681,65 @@ export const TasksPage: React.FC = () => {
                           </span>
                         </td>
 
-                        {/* Status Dropdown */}
+                        {/* Status Dropdown / Badge */}
                         <td style={{ padding: "14px 16px" }}>
-                          <select
-                            value={task.status}
-                            onChange={(e) =>
-                              handleStatusChange(task.id, e.target.value)
-                            }
-                            style={{
-                              padding: "4px 10px",
-                              borderRadius: "16px",
-                              fontSize: "12px",
-                              fontWeight: 700,
-                              border: "none",
-                              cursor: "pointer",
-                              outline: "none",
-                              backgroundColor:
-                                task.status === "Completed"
-                                  ? "#dcfce7"
-                                  : task.status === "In Progress"
-                                    ? "#e0e7ff"
-                                    : "#fef3c7",
-                              color:
-                                task.status === "Completed"
-                                  ? "#15803d"
-                                  : task.status === "In Progress"
-                                    ? "#4338ca"
-                                    : "#b45309",
-                            }}
-                          >
-                            <option value="Pending">Pending (To Do)</option>
-                            <option value="In Progress">In Progress</option>
-                            <option value="Completed">Completed</option>
-                          </select>
+                          {canEditTasks ? (
+                            <select
+                              value={task.status}
+                              onChange={(e) =>
+                                handleStatusChange(task.id, e.target.value)
+                              }
+                              style={{
+                                padding: "4px 10px",
+                                borderRadius: "16px",
+                                fontSize: "12px",
+                                fontWeight: 700,
+                                border: "none",
+                                cursor: "pointer",
+                                outline: "none",
+                                backgroundColor:
+                                  task.status === "Completed"
+                                    ? "#dcfce7"
+                                    : task.status === "In Progress"
+                                      ? "#e0e7ff"
+                                      : "#fef3c7",
+                                color:
+                                  task.status === "Completed"
+                                    ? "#15803d"
+                                    : task.status === "In Progress"
+                                      ? "#4338ca"
+                                      : "#b45309",
+                              }}
+                            >
+                              <option value="Pending">Pending (To Do)</option>
+                              <option value="In Progress">In Progress</option>
+                              <option value="Completed">Completed</option>
+                            </select>
+                          ) : (
+                            <span
+                              style={{
+                                display: "inline-block",
+                                padding: "4px 10px",
+                                borderRadius: "16px",
+                                fontSize: "12px",
+                                fontWeight: 700,
+                                backgroundColor:
+                                  task.status === "Completed"
+                                    ? "#dcfce7"
+                                    : task.status === "In Progress"
+                                      ? "#e0e7ff"
+                                      : "#fef3c7",
+                                color:
+                                  task.status === "Completed"
+                                    ? "#15803d"
+                                    : task.status === "In Progress"
+                                      ? "#4338ca"
+                                      : "#b45309",
+                              }}
+                            >
+                              {task.status === "Pending" ? "Pending (To Do)" : task.status}
+                            </span>
+                          )}
                         </td>
 
                         {/* Due Date */}
@@ -1598,21 +1772,23 @@ export const TasksPage: React.FC = () => {
                               gap: "8px",
                             }}
                           >
-                            <button
-                              onClick={() => openEditModal(task)}
-                              style={{
-                                color: "#64748b",
-                                padding: "6px",
-                                borderRadius: "6px",
-                                cursor: "pointer",
-                                border: "none",
-                                background: "transparent",
-                              }}
-                              title="Edit Task"
-                            >
-                              <Edit2 size={16} />
-                            </button>
-                            {isAdmin && (
+                            {canEditTasks && (
+                              <button
+                                onClick={() => openEditModal(task)}
+                                style={{
+                                  color: "#64748b",
+                                  padding: "6px",
+                                  borderRadius: "6px",
+                                  cursor: "pointer",
+                                  border: "none",
+                                  background: "transparent",
+                                }}
+                                title="Edit Task"
+                              >
+                                <Edit2 size={16} />
+                              </button>
+                            )}
+                            {canDeleteTasks && (
                               <button
                                 onClick={() =>
                                   handleDeleteTask(task.id, task.title)
@@ -1625,10 +1801,15 @@ export const TasksPage: React.FC = () => {
                                   border: "none",
                                   background: "transparent",
                                 }}
-                                title="Delete Task (Admin Only)"
+                                title="Delete Task"
                               >
                                 <Trash2 size={16} />
                               </button>
+                            )}
+                            {!canEditTasks && !canDeleteTasks && (
+                              <span style={{ fontSize: "12px", color: "#94a3b8" }}>
+                                Read-only
+                              </span>
                             )}
                           </div>
                         </td>
@@ -1682,9 +1863,9 @@ export const TasksPage: React.FC = () => {
                   return (
                     <div
                       key={column.id}
-                      onDragOver={(e) => handleColumnDragOver(e, column.id)}
-                      onDragLeave={handleColumnDragLeave}
-                      onDrop={(e) => handleColumnDrop(e, column.id)}
+                      onDragOver={canEditTasks ? (e) => handleColumnDragOver(e, column.id) : undefined}
+                      onDragLeave={canEditTasks ? handleColumnDragLeave : undefined}
+                      onDrop={canEditTasks ? (e) => handleColumnDrop(e, column.id) : undefined}
                       style={{
                         backgroundColor: isHovered ? "#f0fdf4" : "#ffffff",
                         borderRadius: "14px",
@@ -1810,15 +1991,15 @@ export const TasksPage: React.FC = () => {
                             return (
                               <div
                                 key={task.id}
-                                draggable
-                                onDragStart={(e) => handleDragStart(e, task.id)}
+                                draggable={canEditTasks}
+                                onDragStart={canEditTasks ? (e) => handleDragStart(e, task.id) : undefined}
                                 onDragEnd={handleDragEnd}
                                 style={{
                                   backgroundColor: "#ffffff",
                                   borderRadius: "10px",
                                   border: "1px solid #e2e8f0",
                                   padding: "14px",
-                                  cursor: "grab",
+                                  cursor: canEditTasks ? "grab" : "default",
                                   opacity: isBeingDragged ? 0.4 : 1,
                                   boxShadow: "0 1px 3px rgba(15, 23, 42, 0.04)",
                                   transition:
@@ -2005,21 +2186,23 @@ export const TasksPage: React.FC = () => {
                                         </div>
                                       )}
 
-                                    <button
-                                      onClick={() => openEditModal(task)}
-                                      style={{
-                                        color: "#64748b",
-                                        padding: "4px",
-                                        borderRadius: "4px",
-                                        border: "none",
-                                        background: "transparent",
-                                        cursor: "pointer",
-                                      }}
-                                      title="Edit Task"
-                                    >
-                                      <Edit2 size={13} />
-                                    </button>
-                                    {isAdmin && (
+                                    {canEditTasks && (
+                                      <button
+                                        onClick={() => openEditModal(task)}
+                                        style={{
+                                          color: "#64748b",
+                                          padding: "4px",
+                                          borderRadius: "4px",
+                                          border: "none",
+                                          background: "transparent",
+                                          cursor: "pointer",
+                                        }}
+                                        title="Edit Task"
+                                      >
+                                        <Edit2 size={13} />
+                                      </button>
+                                    )}
+                                    {canDeleteTasks && (
                                       <button
                                         onClick={() =>
                                           handleDeleteTask(task.id, task.title)
@@ -2057,7 +2240,7 @@ export const TasksPage: React.FC = () => {
       {/* MODAL: CREATE TASK                                                           */}
       {/* ============================================================================ */}
       <Modal
-        isOpen={isCreateModalOpen}
+        isOpen={isCreateModalOpen && canCreateTasks}
         onClose={() => setIsCreateModalOpen(false)}
         title="Create Task"
         subtitle="Add a new task to an accessible project."
@@ -2332,7 +2515,7 @@ export const TasksPage: React.FC = () => {
       {/* MODAL: EDIT TASK                                                             */}
       {/* ============================================================================ */}
       <Modal
-        isOpen={isEditModalOpen}
+        isOpen={isEditModalOpen && canEditTasks}
         onClose={() => setIsEditModalOpen(false)}
         title="Edit Task"
         subtitle="Update task information, priority, and assignees."

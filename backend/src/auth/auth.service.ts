@@ -113,9 +113,21 @@ export class AuthService {
 
     const tokens = await this.generateTokens(newUser, userAgent);
 
+    const permissions = await this.db
+      .select({
+        module: schema.rolePermissions.module,
+        canView: schema.rolePermissions.canView,
+        canCreate: schema.rolePermissions.canCreate,
+        canEdit: schema.rolePermissions.canEdit,
+        canDelete: schema.rolePermissions.canDelete,
+      })
+      .from(schema.rolePermissions)
+      .where(eq(schema.rolePermissions.roleId, newUser.role));
+
     return {
       ...tokens,
       user: newUser,
+      permissions,
     };
   }
 
@@ -147,6 +159,17 @@ export class AuthService {
 
     const tokens = await this.generateTokens(user, userAgent);
 
+    const permissions = await this.db
+      .select({
+        module: schema.rolePermissions.module,
+        canView: schema.rolePermissions.canView,
+        canCreate: schema.rolePermissions.canCreate,
+        canEdit: schema.rolePermissions.canEdit,
+        canDelete: schema.rolePermissions.canDelete,
+      })
+      .from(schema.rolePermissions)
+      .where(eq(schema.rolePermissions.roleId, user.roleId));
+
     return {
       ...tokens,
       user: {
@@ -159,6 +182,7 @@ export class AuthService {
         isActive: user.isActive,
         createdAt: user.createdAt,
       },
+      permissions,
     };
   }
 

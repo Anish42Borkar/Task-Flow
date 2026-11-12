@@ -53,6 +53,20 @@ export class ProjectMemberGuard implements CanActivate {
       projectId = task.projectId;
     }
 
+    // If reordering tasks where projectId was not directly in params or body
+    if (!projectId && Array.isArray(request.body?.orderedTaskIds) && request.body.orderedTaskIds.length > 0) {
+      const firstTaskId = request.body.orderedTaskIds[0];
+      const [task] = await this.db
+        .select({ projectId: schema.tasks.projectId })
+        .from(schema.tasks)
+        .where(eq(schema.tasks.id, firstTaskId))
+        .limit(1);
+
+      if (task) {
+        projectId = task.projectId;
+      }
+    }
+
     if (!projectId) {
       return true;
     }

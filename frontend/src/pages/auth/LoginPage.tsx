@@ -44,7 +44,7 @@ export const LoginPage: React.FC = () => {
       });
 
       if (res?.accessToken && res?.user) {
-        setAuth(res.user, res.accessToken, res.refreshToken);
+        setAuth(res.user, res.accessToken, res.refreshToken, res.permissions);
         navigate('/dashboard');
       } else {
         throw new Error('Invalid response from server');

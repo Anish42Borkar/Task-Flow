@@ -8,6 +8,7 @@ import { JwtStrategy } from './jwt.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { ProjectMemberGuard } from './guards/project-member.guard';
+import { PermissionsGuard } from './guards/permissions.guard';
 
 @Module({
   imports: [
@@ -24,7 +25,7 @@ import { ProjectMemberGuard } from './guards/project-member.guard';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, JwtAuthGuard, RolesGuard, ProjectMemberGuard],
-  exports: [AuthService, JwtAuthGuard, RolesGuard, ProjectMemberGuard, JwtModule],
+  providers: [AuthService, JwtStrategy, JwtAuthGuard, RolesGuard, ProjectMemberGuard, PermissionsGuard],
+  exports: [AuthService, JwtAuthGuard, RolesGuard, ProjectMemberGuard, PermissionsGuard, JwtModule],
 })
 export class AuthModule {}

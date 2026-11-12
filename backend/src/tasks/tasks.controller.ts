@@ -58,6 +58,14 @@ export class TasksController {
     return this.tasksService.reorderTasks(projectId, dto.orderedTaskIds, actor);
   }
 
+  @Patch('tasks/reorder')
+  async reorderTasksGeneral(
+    @Body() dto: { projectId?: string; orderedTaskIds: string[] },
+    @CurrentUser() actor: any,
+  ) {
+    return this.tasksService.reorderTasks(dto.projectId || '', dto.orderedTaskIds, actor);
+  }
+
   @Get('tasks/:id')
   @UseGuards(ProjectMemberGuard)
   async getTaskById(@Param('id', ParseUUIDPipe) id: string) {

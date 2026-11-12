@@ -352,6 +352,21 @@ export class TasksService {
   }
 
   async reorderTasks(projectId: string, orderedTaskIds: string[], actor: any) {
+    if (!orderedTaskIds || orderedTaskIds.length === 0) {
+      return { success: true, message: 'No tasks to reorder', orderedTaskIds: [] };
+    }
+
+    if (!projectId) {
+      const [firstTask] = await this.db
+        .select({ projectId: schema.tasks.projectId })
+        .from(schema.tasks)
+        .where(eq(schema.tasks.id, orderedTaskIds[0]))
+        .limit(1);
+      if (firstTask) {
+        projectId = firstTask.projectId;
+      }
+    }
+
     // Persist new ordering by updating order_index for each task
     for (let index = 0; index < orderedTaskIds.length; index++) {
       const taskId = orderedTaskIds[index];
@@ -362,11 +377,13 @@ export class TasksService {
     }
 
     // Broadcast reorder event to project room
-    this.eventsGateway.broadcastToProject(projectId, 'task:reordered', {
-      projectId,
-      orderedTaskIds,
-      actor: { id: actor.id, fullName: actor.fullName },
-    });
+    if (projectId) {
+      this.eventsGateway.broadcastToProject(projectId, 'task:reordered', {
+        projectId,
+        orderedTaskIds,
+        actor: { id: actor.id, fullName: actor.fullName },
+      });
+    }
 
     return { success: true, message: 'Tasks reordered successfully', orderedTaskIds };
   }

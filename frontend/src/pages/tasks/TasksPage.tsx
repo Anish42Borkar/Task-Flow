@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Search,
@@ -13,16 +13,20 @@ import {
   Loader2,
   Filter,
   X,
+  ChevronUp,
+  ChevronDown,
+  Layers,
+  User as UserIcon,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { useNotificationStore } from '../../stores/notificationStore';
-import { Task, TaskStatus } from '../../types';
+import { Task, TaskStatus, User } from '../../types';
 import { Button } from '../../components/common/Button';
-import { Badge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
 import { Input } from '../../components/common/Input';
 import { api } from '../../services/api';
 import { getSocket, joinProjectRoom, leaveProjectRoom } from '../../services/socket';
+import { formatDateWithSetting } from '../../utils/date';
 
 interface LiveProject {
   id: string;
@@ -41,11 +45,16 @@ export const TasksPage: React.FC = () => {
 
   const [projects, setProjects] = useState<LiveProject[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [availableUsers, setAvailableUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'All' | 'To Do' | 'In Progress' | 'Completed'>('All');
   const [selectedProjectId, setSelectedProjectId] = useState<string>(urlProjectId || 'all');
   const [search, setSearch] = useState('');
+
+  // Drag and Drop State
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null);
+  const [dragPosition, setDragPosition] = useState<'above' | 'below' | null>(null);
 
   // Sync selectedProjectId if URL params change
   useEffect(() => {
@@ -64,6 +73,7 @@ export const TasksPage: React.FC = () => {
   const [createStatus, setCreateStatus] = useState<TaskStatus>('Pending');
   const [createPriority, setCreatePriority] = useState<'Low' | 'Medium' | 'High'>('Medium');
   const [createDueDate, setCreateDueDate] = useState('');
+  const [createAssigneeIds, setCreateAssigneeIds] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Edit Task Modal state
@@ -72,7 +82,9 @@ export const TasksPage: React.FC = () => {
   const [editTitle, setEditTitle] = useState('');
   const [editDesc, setEditDesc] = useState('');
   const [editStatus, setEditStatus] = useState<TaskStatus>('Pending');
+  const [editPriority, setEditPriority] = useState<'Low' | 'Medium' | 'High'>('Medium');
   const [editDueDate, setEditDueDate] = useState('');
+  const [editAssigneeIds, setEditAssigneeIds] = useState<string[]>([]);
 
   // 1. Fetch accessible projects
   const fetchProjects = useCallback(async () => {
@@ -88,7 +100,18 @@ export const TasksPage: React.FC = () => {
     }
   }, [createProjectId]);
 
-  // 2. Fetch tasks
+  // 2. Fetch users for assignee selection
+  const fetchUsers = useCallback(async () => {
+    try {
+      const res: any = await api.get('/users');
+      const uList = res?.data || res?.users || (Array.isArray(res) ? res : []);
+      setAvailableUsers(uList);
+    } catch (err) {
+      // Non-admin may not have access to /users, which is expected
+    }
+  }, []);
+
+  // 3. Fetch tasks
   const fetchTasks = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -108,18 +131,18 @@ export const TasksPage: React.FC = () => {
 
   useEffect(() => {
     fetchProjects();
-  }, [fetchProjects]);
+    fetchUsers();
+  }, [fetchProjects, fetchUsers]);
 
   useEffect(() => {
     fetchTasks();
   }, [fetchTasks]);
 
-  // 3. Socket.IO Real-time listeners
+  // 4. Socket.IO Real-time listeners
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
 
-    // Join room for active project if selected
     if (selectedProjectId !== 'all') {
       joinProjectRoom(selectedProjectId);
     }
@@ -153,7 +176,6 @@ export const TasksPage: React.FC = () => {
               map.delete(orderedTaskIds[i]);
             }
           }
-          // append any tasks not in the reorder list (other projects)
           for (const remaining of map.values()) {
             reordered.push(remaining);
           }
@@ -184,17 +206,29 @@ export const TasksPage: React.FC = () => {
     };
   }, [selectedProjectId, addToast]);
 
+  // Statistics counts
+  const stats = useMemo(() => {
+    const total = tasks.length;
+    const pending = tasks.filter((t) => t.status === 'Pending').length;
+    const inProgress = tasks.filter((t) => t.status === 'In Progress').length;
+    const completed = tasks.filter((t) => t.status === 'Completed').length;
+    return { total, pending, inProgress, completed };
+  }, [tasks]);
+
   // Filter tasks based on activeTab, project, and search
-  const filteredTasks = tasks.filter((task) => {
-    const matchesTab =
-      activeTab === 'All' ||
-      (activeTab === 'To Do' && task.status === 'Pending') ||
-      task.status === activeTab;
-    const matchesSearch =
-      task.title.toLowerCase().includes(search.toLowerCase()) ||
-      (task.description && task.description.toLowerCase().includes(search.toLowerCase()));
-    return matchesTab && matchesSearch;
-  });
+  const filteredTasks = useMemo(() => {
+    return tasks.filter((task) => {
+      const matchesTab =
+        activeTab === 'All' ||
+        (activeTab === 'To Do' && task.status === 'Pending') ||
+        task.status === activeTab;
+      const matchesSearch =
+        task.title.toLowerCase().includes(search.toLowerCase()) ||
+        (task.description && task.description.toLowerCase().includes(search.toLowerCase())) ||
+        (task.projectName && task.projectName.toLowerCase().includes(search.toLowerCase()));
+      return matchesTab && matchesSearch;
+    });
+  }, [tasks, activeTab, search]);
 
   // Handle Create Task
   const handleCreateTask = async (e: React.FormEvent) => {
@@ -203,18 +237,20 @@ export const TasksPage: React.FC = () => {
 
     try {
       setIsSubmitting(true);
-      const res: any = await api.post(`/projects/${createProjectId}/tasks`, {
+      await api.post(`/projects/${createProjectId}/tasks`, {
         title: createTitle.trim(),
         description: createDesc.trim() || undefined,
         status: createStatus,
         priority: createPriority,
         dueDate: createDueDate ? new Date(createDueDate).toISOString() : undefined,
+        assigneeIds: createAssigneeIds.length > 0 ? createAssigneeIds : undefined,
       });
 
       addToast('Success', `Task "${createTitle}" created successfully`, 'success');
       setIsCreateModalOpen(false);
       setCreateTitle('');
       setCreateDesc('');
+      setCreateAssigneeIds([]);
       fetchTasks();
     } catch (err: any) {
       addToast('Error', err.message || 'Failed to create task', 'error');
@@ -240,7 +276,9 @@ export const TasksPage: React.FC = () => {
     setEditTitle(task.title);
     setEditDesc(task.description || '');
     setEditStatus(task.status as TaskStatus);
+    setEditPriority(task.priority || 'Medium');
     setEditDueDate(task.dueDate ? task.dueDate.split('T')[0] : '');
+    setEditAssigneeIds((task.assignees || []).map((a) => a.id));
     setIsEditModalOpen(true);
   };
 
@@ -254,7 +292,9 @@ export const TasksPage: React.FC = () => {
         title: editTitle.trim(),
         description: editDesc.trim() || undefined,
         status: editStatus,
+        priority: editPriority,
         dueDate: editDueDate ? new Date(editDueDate).toISOString() : undefined,
+        assigneeIds: editAssigneeIds,
       });
 
       addToast('Success', 'Task updated successfully', 'success');
@@ -269,14 +309,13 @@ export const TasksPage: React.FC = () => {
 
   // Handle Status Quick Change
   const handleStatusChange = async (taskId: string, newStatus: string) => {
-    // Optimistic update
     setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status: newStatus as TaskStatus } : t)));
     try {
       await api.patch(`/tasks/${taskId}/status`, { status: newStatus });
       addToast('Status Updated', `Task moved to ${newStatus}`, 'success');
     } catch (err: any) {
       addToast('Error', err.message || 'Failed to update task status', 'error');
-      fetchTasks(); // revert on error
+      fetchTasks();
     }
   };
 
@@ -297,22 +336,89 @@ export const TasksPage: React.FC = () => {
     }
   };
 
-  // Drag and Drop Task Reordering (MANDATORY Persisted DnD)
+  // ============================================================================
+  // MANDATORY DRAG-AND-DROP & TASK ORDERING REORDER LOGIC
+  // ============================================================================
+
+  const persistReorderedTasks = async (targetProjectId: string, orderedTaskIds: string[]) => {
+    try {
+      await api.patch(`/projects/${targetProjectId}/tasks/reorder`, {
+        orderedTaskIds,
+      });
+      addToast('Tasks Reordered', 'New task order persisted to database', 'success');
+    } catch (err: any) {
+      addToast('Reorder Error', err.message || 'Could not save new task ordering', 'error');
+      fetchTasks(); // Revert on failure
+    }
+  };
+
+  // 1-Click Move Up / Move Down buttons for Accessibility
+  const handleMoveTask = async (taskId: string, direction: 'up' | 'down') => {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+
+    const targetProjectId = task.projectId;
+    const projectTasks = tasks.filter((t) => t.projectId === targetProjectId);
+    const currentIndex = projectTasks.findIndex((t) => t.id === taskId);
+
+    if (direction === 'up' && currentIndex <= 0) return;
+    if (direction === 'down' && currentIndex >= projectTasks.length - 1) return;
+
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    const reorderedProjectTasks = [...projectTasks];
+    const [moved] = reorderedProjectTasks.splice(currentIndex, 1);
+    reorderedProjectTasks.splice(targetIndex, 0, moved);
+
+    const orderedTaskIds = reorderedProjectTasks.map((t) => t.id);
+
+    // Optimistic UI update
+    setTasks((prev) => {
+      const otherTasks = prev.filter((t) => t.projectId !== targetProjectId);
+      const updated = reorderedProjectTasks.map((t, idx) => ({ ...t, orderIndex: idx + 1 }));
+      return [...otherTasks, ...updated];
+    });
+
+    await persistReorderedTasks(targetProjectId, orderedTaskIds);
+  };
+
+  // HTML5 Drag Events
   const handleDragStart = (e: React.DragEvent, taskId: string) => {
     setDraggedTaskId(taskId);
     e.dataTransfer.setData('text/plain', taskId);
     e.dataTransfer.effectAllowed = 'move';
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDragOver = (e: React.DragEvent, targetTaskId: string) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
+
+    if (draggedTaskId === targetTaskId) {
+      setDragOverTaskId(null);
+      setDragPosition(null);
+      return;
+    }
+
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const offsetY = e.clientY - rect.top;
+    const position = offsetY < rect.height / 2 ? 'above' : 'below';
+
+    setDragOverTaskId(targetTaskId);
+    setDragPosition(position);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverTaskId(null);
+    setDragPosition(null);
   };
 
   const handleDrop = async (e: React.DragEvent, targetTaskId: string) => {
     e.preventDefault();
     const sourceTaskId = e.dataTransfer.getData('text/plain') || draggedTaskId;
+
+    const currentPosition = dragPosition;
     setDraggedTaskId(null);
+    setDragOverTaskId(null);
+    setDragPosition(null);
 
     if (!sourceTaskId || sourceTaskId === targetTaskId) return;
 
@@ -321,18 +427,38 @@ export const TasksPage: React.FC = () => {
 
     if (!sourceTask || !targetTask) return;
 
-    // We reorder tasks within the project of the target task
+    // Cross-project check
+    if (sourceTask.projectId !== targetTask.projectId) {
+      addToast(
+        'Notice',
+        'Reordering is scoped within the same project. Please filter by project or drag within the same project.',
+        'info',
+      );
+      return;
+    }
+
     const targetProjectId = targetTask.projectId;
     const projectTasks = tasks.filter((t) => t.projectId === targetProjectId);
 
     const oldIndex = projectTasks.findIndex((t) => t.id === sourceTaskId);
-    const newIndex = projectTasks.findIndex((t) => t.id === targetTaskId);
+    let newIndex = projectTasks.findIndex((t) => t.id === targetTaskId);
 
-    if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return;
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    if (currentPosition === 'below' && oldIndex < newIndex) {
+      // dropping below a later item
+    } else if (currentPosition === 'above' && oldIndex > newIndex) {
+      // dropping above an earlier item
+    } else if (currentPosition === 'below') {
+      newIndex += 1;
+    }
 
     const reorderedProjectTasks = [...projectTasks];
     const [moved] = reorderedProjectTasks.splice(oldIndex, 1);
-    reorderedProjectTasks.splice(newIndex, 0, moved);
+
+    // Clamp insertion point
+    const insertAt = Math.min(Math.max(newIndex, 0), reorderedProjectTasks.length);
+    reorderedProjectTasks.splice(insertAt, 0, moved);
 
     const orderedTaskIds = reorderedProjectTasks.map((t) => t.id);
 
@@ -347,15 +473,13 @@ export const TasksPage: React.FC = () => {
     });
 
     // Backend PostgreSQL persistence API call
-    try {
-      await api.patch(`/projects/${targetProjectId}/tasks/reorder`, {
-        orderedTaskIds,
-      });
-      addToast('Tasks Reordered', 'New task order persisted to database', 'success');
-    } catch (err: any) {
-      addToast('Reorder Error', err.message || 'Could not save new task ordering', 'error');
-      fetchTasks(); // revert on failure
-    }
+    await persistReorderedTasks(targetProjectId, orderedTaskIds);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedTaskId(null);
+    setDragOverTaskId(null);
+    setDragPosition(null);
   };
 
   return (
@@ -365,7 +489,7 @@ export const TasksPage: React.FC = () => {
         <div>
           <h1 style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a' }}>Tasks</h1>
           <p style={{ fontSize: '13.5px', color: '#64748b', marginTop: '2px' }}>
-            Manage, reorder, and track all your tasks across accessible projects.
+            Plan, reorder, and track tasks with persistent drag-and-drop sequencing.
           </p>
         </div>
 
@@ -396,6 +520,14 @@ export const TasksPage: React.FC = () => {
                 color: '#0f172a',
               }}
             />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+              >
+                <X size={14} color="#94a3b8" />
+              </button>
+            )}
           </div>
 
           <Button
@@ -410,6 +542,140 @@ export const TasksPage: React.FC = () => {
           >
             Create Task
           </Button>
+        </div>
+      </div>
+
+      {/* Task Summary Stat Cards */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: '16px',
+          marginBottom: '24px',
+        }}
+      >
+        <div
+          style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '12px',
+            padding: '16px 20px',
+            border: '1px solid #e2e8f0',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '14px',
+          }}
+        >
+          <div
+            style={{
+              width: '42px',
+              height: '42px',
+              borderRadius: '10px',
+              backgroundColor: '#eef2ff',
+              color: '#4f46e5',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Layers size={20} />
+          </div>
+          <div>
+            <div style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>TOTAL TASKS</div>
+            <div style={{ fontSize: '22px', fontWeight: 800, color: '#0f172a' }}>{stats.total}</div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '12px',
+            padding: '16px 20px',
+            border: '1px solid #e2e8f0',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '14px',
+          }}
+        >
+          <div
+            style={{
+              width: '42px',
+              height: '42px',
+              borderRadius: '10px',
+              backgroundColor: '#fef3c7',
+              color: '#d97706',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Clock size={20} />
+          </div>
+          <div>
+            <div style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>TO DO</div>
+            <div style={{ fontSize: '22px', fontWeight: 800, color: '#0f172a' }}>{stats.pending}</div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '12px',
+            padding: '16px 20px',
+            border: '1px solid #e2e8f0',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '14px',
+          }}
+        >
+          <div
+            style={{
+              width: '42px',
+              height: '42px',
+              borderRadius: '10px',
+              backgroundColor: '#e0e7ff',
+              color: '#4338ca',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <AlertCircle size={20} />
+          </div>
+          <div>
+            <div style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>IN PROGRESS</div>
+            <div style={{ fontSize: '22px', fontWeight: 800, color: '#0f172a' }}>{stats.inProgress}</div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '12px',
+            padding: '16px 20px',
+            border: '1px solid #e2e8f0',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '14px',
+          }}
+        >
+          <div
+            style={{
+              width: '42px',
+              height: '42px',
+              borderRadius: '10px',
+              backgroundColor: '#dcfce7',
+              color: '#15803d',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <CheckCircle2 size={20} />
+          </div>
+          <div>
+            <div style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>COMPLETED</div>
+            <div style={{ fontSize: '22px', fontWeight: 800, color: '#0f172a' }}>{stats.completed}</div>
+          </div>
         </div>
       </div>
 
@@ -451,6 +717,9 @@ export const TasksPage: React.FC = () => {
               >
                 {projects.find((p) => p.id === selectedProjectId)?.name || 'Selected Project'}
               </span>
+              <span style={{ color: '#6366f1', fontSize: '12px' }}>
+                (Drag & drop rows using the grip handle or arrows to reorder)
+              </span>
             </div>
             <button
               onClick={() => handleProjectSelect('all')}
@@ -485,23 +754,42 @@ export const TasksPage: React.FC = () => {
         >
           {/* Filter Pills */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {(['All', 'To Do', 'In Progress', 'Completed'] as const).map((tab) => (
+            {[
+              { label: 'All', count: stats.total },
+              { label: 'To Do', count: stats.pending },
+              { label: 'In Progress', count: stats.inProgress },
+              { label: 'Completed', count: stats.completed },
+            ].map((tab) => (
               <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
+                key={tab.label}
+                onClick={() => setActiveTab(tab.label as any)}
                 style={{
                   padding: '7px 18px',
                   borderRadius: '8px',
                   fontSize: '13px',
                   fontWeight: 600,
-                  backgroundColor: activeTab === tab ? '#4f46e5' : '#f8fafc',
-                  color: activeTab === tab ? '#ffffff' : '#475569',
-                  border: activeTab === tab ? 'none' : '1px solid #e2e8f0',
+                  backgroundColor: activeTab === tab.label ? '#4f46e5' : '#f8fafc',
+                  color: activeTab === tab.label ? '#ffffff' : '#475569',
+                  border: activeTab === tab.label ? 'none' : '1px solid #e2e8f0',
                   transition: 'all 0.15s ease',
                   cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
                 }}
               >
-                {tab}
+                <span>{tab.label}</span>
+                <span
+                  style={{
+                    fontSize: '11px',
+                    padding: '1px 6px',
+                    borderRadius: '10px',
+                    backgroundColor: activeTab === tab.label ? 'rgba(255,255,255,0.25)' : '#e2e8f0',
+                    color: activeTab === tab.label ? '#ffffff' : '#475569',
+                  }}
+                >
+                  {tab.count}
+                </span>
               </button>
             ))}
           </div>
@@ -538,7 +826,7 @@ export const TasksPage: React.FC = () => {
         <div style={{ overflowX: 'auto' }}>
           {isLoading ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px', color: '#64748b', gap: '10px' }}>
-              <Loader2 size={24} className="spin-animate" />
+              <Loader2 size={24} className="animate-spin" />
               <span>Loading tasks...</span>
             </div>
           ) : filteredTasks.length === 0 ? (
@@ -555,119 +843,302 @@ export const TasksPage: React.FC = () => {
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13.5px' }}>
               <thead>
                 <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontWeight: 600, fontSize: '12.5px' }}>
-                  <th style={{ padding: '14px 20px', width: '30px' }} title="Drag handle">
-                    <GripVertical size={16} color="#94a3b8" />
+                  <th style={{ padding: '14px 16px', width: '56px', textAlign: 'center' }} title="Drag handle / Reorder">
+                    <GripVertical size={16} color="#94a3b8" style={{ display: 'inline-block' }} />
                   </th>
-                  <th style={{ padding: '14px 20px', width: '50px' }}>#</th>
-                  <th style={{ padding: '14px 20px' }}>Task Title</th>
-                  <th style={{ padding: '14px 20px' }}>Project</th>
-                  <th style={{ padding: '14px 20px' }}>Status</th>
-                  <th style={{ padding: '14px 20px' }}>Due Date</th>
-                  <th style={{ padding: '14px 20px', textAlign: 'center' }}>Actions</th>
+                  <th style={{ padding: '14px 16px', width: '45px' }}>#</th>
+                  <th style={{ padding: '14px 20px', minWidth: '220px' }}>Task Title</th>
+                  <th style={{ padding: '14px 16px' }}>Project</th>
+                  <th style={{ padding: '14px 16px' }}>Assignees</th>
+                  <th style={{ padding: '14px 16px' }}>Priority</th>
+                  <th style={{ padding: '14px 16px' }}>Status</th>
+                  <th style={{ padding: '14px 16px' }}>Due Date</th>
+                  <th style={{ padding: '14px 20px', textAlign: 'center', width: '100px' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredTasks.map((task, index) => (
-                  <tr
-                    key={task.id}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, task.id)}
-                    onDragOver={handleDragOver}
-                    onDrop={(e) => handleDrop(e, task.id)}
-                    style={{
-                      borderBottom: '1px solid #f1f5f9',
-                      cursor: 'grab',
-                      transition: 'background-color 0.15s ease',
-                      backgroundColor: draggedTaskId === task.id ? '#f1f5f9' : 'transparent',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#fafafa')}
-                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = draggedTaskId === task.id ? '#f1f5f9' : 'transparent')}
-                  >
-                    <td style={{ padding: '16px 20px', color: '#94a3b8' }}>
-                      <GripVertical size={16} />
-                    </td>
-                    <td style={{ padding: '16px 20px', color: '#94a3b8', fontSize: '12px' }}>
-                      {task.orderIndex || index + 1}
-                    </td>
-                    <td style={{ padding: '16px 20px', fontWeight: 600, color: '#0f172a' }}>
-                      <div>{task.title}</div>
-                      {task.description && (
-                        <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 400, marginTop: '2px', maxWidth: '380px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {task.description}
+                {filteredTasks.map((task, index) => {
+                  const isBeingDragged = draggedTaskId === task.id;
+                  const isDropTarget = dragOverTaskId === task.id;
+
+                  // Find index within the same project for Move Up/Down bounds
+                  const sameProjectTasks = tasks.filter((t) => t.projectId === task.projectId);
+                  const projectIndex = sameProjectTasks.findIndex((t) => t.id === task.id);
+                  const canMoveUp = projectIndex > 0;
+                  const canMoveDown = projectIndex < sameProjectTasks.length - 1;
+
+                  return (
+                    <tr
+                      key={task.id}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, task.id)}
+                      onDragOver={(e) => handleDragOver(e, task.id)}
+                      onDragLeave={handleDragLeave}
+                      onDrop={(e) => handleDrop(e, task.id)}
+                      onDragEnd={handleDragEnd}
+                      style={{
+                        borderBottom: '1px solid #f1f5f9',
+                        cursor: 'grab',
+                        transition: 'all 0.15s ease',
+                        opacity: isBeingDragged ? 0.45 : 1,
+                        backgroundColor: isBeingDragged ? '#f1f5f9' : 'transparent',
+                        boxShadow: isDropTarget
+                          ? dragPosition === 'above'
+                            ? 'inset 0 3px 0 0 #4f46e5'
+                            : 'inset 0 -3px 0 0 #4f46e5'
+                          : 'none',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isBeingDragged) e.currentTarget.style.backgroundColor = '#fafafa';
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isBeingDragged) e.currentTarget.style.backgroundColor = 'transparent';
+                      }}
+                    >
+                      {/* Grip Handle and 1-Click Move Arrows */}
+                      <td style={{ padding: '14px 12px', textAlign: 'center', color: '#94a3b8' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          <span title="Drag to reorder" style={{ cursor: 'grab' }}>
+                            <GripVertical size={16} />
+                          </span>
+                          <div style={{ display: 'inline-flex', flexDirection: 'column' }}>
+                            <button
+                              onClick={() => handleMoveTask(task.id, 'up')}
+                              disabled={!canMoveUp}
+                              title="Move task up"
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                cursor: canMoveUp ? 'pointer' : 'default',
+                                opacity: canMoveUp ? 0.7 : 0.2,
+                                padding: 0,
+                                lineHeight: 1,
+                              }}
+                            >
+                              <ChevronUp size={12} color={canMoveUp ? '#4f46e5' : '#94a3b8'} />
+                            </button>
+                            <button
+                              onClick={() => handleMoveTask(task.id, 'down')}
+                              disabled={!canMoveDown}
+                              title="Move task down"
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                cursor: canMoveDown ? 'pointer' : 'default',
+                                opacity: canMoveDown ? 0.7 : 0.2,
+                                padding: 0,
+                                lineHeight: 1,
+                              }}
+                            >
+                              <ChevronDown size={12} color={canMoveDown ? '#4f46e5' : '#94a3b8'} />
+                            </button>
+                          </div>
                         </div>
-                      )}
-                    </td>
-                    <td style={{ padding: '16px 20px', color: '#475569' }}>
-                      <span style={{ padding: '3px 8px', borderRadius: '6px', backgroundColor: '#f1f5f9', fontSize: '12px', fontWeight: 500 }}>
-                        {task.projectName || 'Project'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '16px 20px' }}>
-                      <select
-                        value={task.status}
-                        onChange={(e) => handleStatusChange(task.id, e.target.value)}
-                        style={{
-                          padding: '4px 10px',
-                          borderRadius: '16px',
-                          fontSize: '12px',
-                          fontWeight: 700,
-                          border: 'none',
-                          cursor: 'pointer',
-                          backgroundColor:
-                            task.status === 'Completed'
-                              ? '#dcfce7'
-                              : task.status === 'In Progress'
-                              ? '#e0e7ff'
-                              : '#fef3c7',
-                          color:
-                            task.status === 'Completed'
-                              ? '#15803d'
-                              : task.status === 'In Progress'
-                              ? '#4338ca'
-                              : '#b45309',
-                        }}
-                      >
-                        <option value="Pending">Pending</option>
-                        <option value="In Progress">In Progress</option>
-                        <option value="Completed">Completed</option>
-                      </select>
-                    </td>
-                    <td style={{ padding: '16px 20px', color: '#475569' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Calendar size={14} color="#94a3b8" />
-                        <span>
-                          {task.dueDate
-                            ? new Date(task.dueDate).toLocaleDateString('en-US', {
-                                month: 'short',
-                                day: 'numeric',
-                                year: 'numeric',
-                              })
-                            : 'No due date'}
-                        </span>
-                      </div>
-                    </td>
-                    <td style={{ padding: '16px 20px', textAlign: 'center' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                        <button
-                          onClick={() => openEditModal(task)}
-                          style={{ color: '#64748b', padding: '6px', borderRadius: '6px', cursor: 'pointer', border: 'none', background: 'transparent' }}
-                          title="Edit Task"
+                      </td>
+
+                      {/* Order Number */}
+                      <td style={{ padding: '14px 16px', color: '#64748b', fontSize: '12.5px', fontWeight: 600 }}>
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            backgroundColor: '#f1f5f9',
+                            color: '#475569',
+                            minWidth: '22px',
+                            textAlign: 'center',
+                          }}
                         >
-                          <Edit2 size={16} />
-                        </button>
-                        {isAdmin && (
-                          <button
-                            onClick={() => handleDeleteTask(task.id, task.title)}
-                            style={{ color: '#ef4444', padding: '6px', borderRadius: '6px', cursor: 'pointer', border: 'none', background: 'transparent' }}
-                            title="Delete Task (Admin Only)"
+                          {task.orderIndex || index + 1}
+                        </span>
+                      </td>
+
+                      {/* Title & Description */}
+                      <td style={{ padding: '14px 20px', fontWeight: 600, color: '#0f172a' }}>
+                        <div>{task.title}</div>
+                        {task.description && (
+                          <div
+                            style={{
+                              fontSize: '12px',
+                              color: '#64748b',
+                              fontWeight: 400,
+                              marginTop: '2px',
+                              maxWidth: '360px',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}
+                            title={task.description}
                           >
-                            <Trash2 size={16} />
-                          </button>
+                            {task.description}
+                          </div>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+
+                      {/* Project Name */}
+                      <td style={{ padding: '14px 16px', color: '#475569' }}>
+                        <span
+                          style={{
+                            padding: '3px 9px',
+                            borderRadius: '6px',
+                            backgroundColor: '#f1f5f9',
+                            fontSize: '12px',
+                            fontWeight: 500,
+                            color: '#334155',
+                          }}
+                        >
+                          {task.projectName || 'Project'}
+                        </span>
+                      </td>
+
+                      {/* Assignees */}
+                      <td style={{ padding: '14px 16px' }}>
+                        {task.assignees && task.assignees.length > 0 ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            {task.assignees.slice(0, 3).map((a) => (
+                              <div
+                                key={a.id}
+                                title={`${a.fullName} (${a.email})`}
+                                style={{
+                                  width: '26px',
+                                  height: '26px',
+                                  borderRadius: '50%',
+                                  backgroundColor: '#4f46e5',
+                                  color: '#ffffff',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: '10.5px',
+                                  fontWeight: 700,
+                                  border: '1.5px solid #ffffff',
+                                }}
+                              >
+                                {a.fullName
+                                  ? a.fullName
+                                      .split(' ')
+                                      .map((n) => n[0])
+                                      .join('')
+                                      .toUpperCase()
+                                      .slice(0, 2)
+                                  : 'U'}
+                              </div>
+                            ))}
+                            {task.assignees.length > 3 && (
+                              <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>
+                                +{task.assignees.length - 3}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: '12px', color: '#94a3b8' }}>Unassigned</span>
+                        )}
+                      </td>
+
+                      {/* Priority */}
+                      <td style={{ padding: '14px 16px' }}>
+                        <span
+                          style={{
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            fontSize: '11.5px',
+                            fontWeight: 700,
+                            backgroundColor:
+                              task.priority === 'High'
+                                ? '#fee2e2'
+                                : task.priority === 'Medium'
+                                ? '#fef3c7'
+                                : '#e0e7ff',
+                            color:
+                              task.priority === 'High'
+                                ? '#b91c1c'
+                                : task.priority === 'Medium'
+                                ? '#b45309'
+                                : '#4338ca',
+                          }}
+                        >
+                          {task.priority || 'Medium'}
+                        </span>
+                      </td>
+
+                      {/* Status Dropdown */}
+                      <td style={{ padding: '14px 16px' }}>
+                        <select
+                          value={task.status}
+                          onChange={(e) => handleStatusChange(task.id, e.target.value)}
+                          style={{
+                            padding: '4px 10px',
+                            borderRadius: '16px',
+                            fontSize: '12px',
+                            fontWeight: 700,
+                            border: 'none',
+                            cursor: 'pointer',
+                            outline: 'none',
+                            backgroundColor:
+                              task.status === 'Completed'
+                                ? '#dcfce7'
+                                : task.status === 'In Progress'
+                                ? '#e0e7ff'
+                                : '#fef3c7',
+                            color:
+                              task.status === 'Completed'
+                                ? '#15803d'
+                                : task.status === 'In Progress'
+                                ? '#4338ca'
+                                : '#b45309',
+                          }}
+                        >
+                          <option value="Pending">Pending (To Do)</option>
+                          <option value="In Progress">In Progress</option>
+                          <option value="Completed">Completed</option>
+                        </select>
+                      </td>
+
+                      {/* Due Date */}
+                      <td style={{ padding: '14px 16px', color: '#475569' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Calendar size={14} color="#94a3b8" />
+                          <span>{task.dueDate ? formatDateWithSetting(task.dueDate) : 'No due date'}</span>
+                        </div>
+                      </td>
+
+                      {/* Actions */}
+                      <td style={{ padding: '14px 20px', textAlign: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                          <button
+                            onClick={() => openEditModal(task)}
+                            style={{
+                              color: '#64748b',
+                              padding: '6px',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              border: 'none',
+                              background: 'transparent',
+                            }}
+                            title="Edit Task"
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                          {isAdmin && (
+                            <button
+                              onClick={() => handleDeleteTask(task.id, task.title)}
+                              style={{
+                                color: '#ef4444',
+                                padding: '6px',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                border: 'none',
+                                background: 'transparent',
+                              }}
+                              title="Delete Task (Admin Only)"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -707,6 +1178,7 @@ export const TasksPage: React.FC = () => {
                 outline: 'none',
                 fontSize: '13.5px',
                 fontFamily: 'inherit',
+                boxSizing: 'border-box',
               }}
             />
           </div>
@@ -801,10 +1273,64 @@ export const TasksPage: React.FC = () => {
                   border: '1.5px solid #e2e8f0',
                   outline: 'none',
                   fontSize: '14px',
+                  boxSizing: 'border-box',
                 }}
               />
             </div>
           </div>
+
+          {availableUsers.length > 0 && (
+            <div>
+              <label style={{ fontSize: '13.5px', fontWeight: 600, color: '#1e293b', marginBottom: '6px', display: 'block' }}>
+                Assignees
+              </label>
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: '8px',
+                  maxHeight: '120px',
+                  overflowY: 'auto',
+                  padding: '8px',
+                  borderRadius: '10px',
+                  border: '1.5px solid #e2e8f0',
+                }}
+              >
+                {availableUsers.map((u) => {
+                  const isSelected = createAssigneeIds.includes(u.id);
+                  return (
+                    <button
+                      key={u.id}
+                      type="button"
+                      onClick={() => {
+                        if (isSelected) {
+                          setCreateAssigneeIds((prev) => prev.filter((id) => id !== u.id));
+                        } else {
+                          setCreateAssigneeIds((prev) => [...prev, u.id]);
+                        }
+                      }}
+                      style={{
+                        padding: '4px 10px',
+                        borderRadius: '16px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        backgroundColor: isSelected ? '#4f46e5' : '#f1f5f9',
+                        color: isSelected ? '#ffffff' : '#334155',
+                        border: 'none',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      <UserIcon size={12} />
+                      {u.fullName}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
             <Button variant="secondary" onClick={() => setIsCreateModalOpen(false)}>
@@ -822,7 +1348,7 @@ export const TasksPage: React.FC = () => {
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
         title="Edit Task"
-        subtitle="Update task information and status."
+        subtitle="Update task information, priority, and assignees."
       >
         <form onSubmit={handleUpdateTask} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <Input
@@ -848,6 +1374,7 @@ export const TasksPage: React.FC = () => {
                 outline: 'none',
                 fontSize: '13.5px',
                 fontFamily: 'inherit',
+                boxSizing: 'border-box',
               }}
             />
           </div>
@@ -878,23 +1405,100 @@ export const TasksPage: React.FC = () => {
 
             <div>
               <label style={{ fontSize: '13.5px', fontWeight: 600, color: '#1e293b', marginBottom: '6px', display: 'block' }}>
-                Due Date
+                Priority
               </label>
-              <input
-                type="date"
-                value={editDueDate}
-                onChange={(e) => setEditDueDate(e.target.value)}
+              <select
+                value={editPriority}
+                onChange={(e) => setEditPriority(e.target.value as any)}
                 style={{
                   width: '100%',
-                  padding: '10px 14px',
+                  padding: '11px 14px',
                   borderRadius: '10px',
                   border: '1.5px solid #e2e8f0',
                   outline: 'none',
                   fontSize: '14px',
+                  backgroundColor: '#ffffff',
                 }}
-              />
+              >
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+              </select>
             </div>
           </div>
+
+          <div>
+            <label style={{ fontSize: '13.5px', fontWeight: 600, color: '#1e293b', marginBottom: '6px', display: 'block' }}>
+              Due Date
+            </label>
+            <input
+              type="date"
+              value={editDueDate}
+              onChange={(e) => setEditDueDate(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px 14px',
+                borderRadius: '10px',
+                border: '1.5px solid #e2e8f0',
+                outline: 'none',
+                fontSize: '14px',
+                boxSizing: 'border-box',
+              }}
+            />
+          </div>
+
+          {availableUsers.length > 0 && (
+            <div>
+              <label style={{ fontSize: '13.5px', fontWeight: 600, color: '#1e293b', marginBottom: '6px', display: 'block' }}>
+                Assignees
+              </label>
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: '8px',
+                  maxHeight: '120px',
+                  overflowY: 'auto',
+                  padding: '8px',
+                  borderRadius: '10px',
+                  border: '1.5px solid #e2e8f0',
+                }}
+              >
+                {availableUsers.map((u) => {
+                  const isSelected = editAssigneeIds.includes(u.id);
+                  return (
+                    <button
+                      key={u.id}
+                      type="button"
+                      onClick={() => {
+                        if (isSelected) {
+                          setEditAssigneeIds((prev) => prev.filter((id) => id !== u.id));
+                        } else {
+                          setEditAssigneeIds((prev) => [...prev, u.id]);
+                        }
+                      }}
+                      style={{
+                        padding: '4px 10px',
+                        borderRadius: '16px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        backgroundColor: isSelected ? '#4f46e5' : '#f1f5f9',
+                        color: isSelected ? '#ffffff' : '#334155',
+                        border: 'none',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      <UserIcon size={12} />
+                      {u.fullName}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
             <Button variant="secondary" onClick={() => setIsEditModalOpen(false)}>

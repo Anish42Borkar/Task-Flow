@@ -17,6 +17,9 @@ import {
   ChevronDown,
   Layers,
   User as UserIcon,
+  LayoutList,
+  Kanban,
+  ArrowRight,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { useNotificationStore } from '../../stores/notificationStore';
@@ -43,6 +46,11 @@ export const TasksPage: React.FC = () => {
 
   const urlProjectId = searchParams.get('projectId') || searchParams.get('project');
 
+  // View Mode: 'table' (List) or 'board' (Kanban)
+  const [viewMode, setViewMode] = useState<'table' | 'board'>(() => {
+    return (localStorage.getItem('taskflow_tasks_view_mode') as 'table' | 'board') || 'table';
+  });
+
   const [projects, setProjects] = useState<LiveProject[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [availableUsers, setAvailableUsers] = useState<User[]>([]);
@@ -51,10 +59,13 @@ export const TasksPage: React.FC = () => {
   const [selectedProjectId, setSelectedProjectId] = useState<string>(urlProjectId || 'all');
   const [search, setSearch] = useState('');
 
-  // Drag and Drop State
+  // Drag and Drop State for Table View (Reordering)
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null);
   const [dragPosition, setDragPosition] = useState<'above' | 'below' | null>(null);
+
+  // Drag and Drop State for Kanban Board View (Status Transition)
+  const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
 
   // Sync selectedProjectId if URL params change
   useEffect(() => {
@@ -64,6 +75,11 @@ export const TasksPage: React.FC = () => {
       setCreateProjectId(pId);
     }
   }, [searchParams]);
+
+  const handleViewModeChange = (mode: 'table' | 'board') => {
+    setViewMode(mode);
+    localStorage.setItem('taskflow_tasks_view_mode', mode);
+  };
 
   // Create Task Modal state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -219,6 +235,7 @@ export const TasksPage: React.FC = () => {
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
       const matchesTab =
+        viewMode === 'board' ||
         activeTab === 'All' ||
         (activeTab === 'To Do' && task.status === 'Pending') ||
         task.status === activeTab;
@@ -228,7 +245,7 @@ export const TasksPage: React.FC = () => {
         (task.projectName && task.projectName.toLowerCase().includes(search.toLowerCase()));
       return matchesTab && matchesSearch;
     });
-  }, [tasks, activeTab, search]);
+  }, [tasks, activeTab, search, viewMode]);
 
   // Handle Create Task
   const handleCreateTask = async (e: React.FormEvent) => {
@@ -309,10 +326,11 @@ export const TasksPage: React.FC = () => {
 
   // Handle Status Quick Change
   const handleStatusChange = async (taskId: string, newStatus: string) => {
-    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status: newStatus as TaskStatus } : t)));
+    const targetStatus = newStatus as TaskStatus;
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status: targetStatus } : t)));
     try {
-      await api.patch(`/tasks/${taskId}/status`, { status: newStatus });
-      addToast('Status Updated', `Task moved to ${newStatus}`, 'success');
+      await api.patch(`/tasks/${taskId}/status`, { status: targetStatus });
+      addToast('Status Updated', `Task moved to ${targetStatus === 'Pending' ? 'To Do' : targetStatus}`, 'success');
     } catch (err: any) {
       addToast('Error', err.message || 'Failed to update task status', 'error');
       fetchTasks();
@@ -337,7 +355,7 @@ export const TasksPage: React.FC = () => {
   };
 
   // ============================================================================
-  // MANDATORY DRAG-AND-DROP & TASK ORDERING REORDER LOGIC
+  // MANDATORY DRAG-AND-DROP & TASK ORDERING REORDER LOGIC (Table View)
   // ============================================================================
 
   const persistReorderedTasks = async (targetProjectId: string, orderedTaskIds: string[]) => {
@@ -381,7 +399,7 @@ export const TasksPage: React.FC = () => {
     await persistReorderedTasks(targetProjectId, orderedTaskIds);
   };
 
-  // HTML5 Drag Events
+  // Table Row Drag Events
   const handleDragStart = (e: React.DragEvent, taskId: string) => {
     setDraggedTaskId(taskId);
     e.dataTransfer.setData('text/plain', taskId);
@@ -456,7 +474,6 @@ export const TasksPage: React.FC = () => {
     const reorderedProjectTasks = [...projectTasks];
     const [moved] = reorderedProjectTasks.splice(oldIndex, 1);
 
-    // Clamp insertion point
     const insertAt = Math.min(Math.max(newIndex, 0), reorderedProjectTasks.length);
     reorderedProjectTasks.splice(insertAt, 0, moved);
 
@@ -472,7 +489,6 @@ export const TasksPage: React.FC = () => {
       return [...otherTasks, ...updatedProjectTasks];
     });
 
-    // Backend PostgreSQL persistence API call
     await persistReorderedTasks(targetProjectId, orderedTaskIds);
   };
 
@@ -480,20 +496,142 @@ export const TasksPage: React.FC = () => {
     setDraggedTaskId(null);
     setDragOverTaskId(null);
     setDragPosition(null);
+    setDragOverColumn(null);
   };
+
+  // ============================================================================
+  // KANBAN BOARD DRAG-AND-DROP (Status Transition Between Columns)
+  // ============================================================================
+
+  const handleColumnDragOver = (e: React.DragEvent, status: TaskStatus) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverColumn !== status) {
+      setDragOverColumn(status);
+    }
+  };
+
+  const handleColumnDragLeave = (e: React.DragEvent) => {
+    // Only clear if actually leaving this column container
+    const currentTarget = e.currentTarget as HTMLElement;
+    const relatedTarget = e.relatedTarget as Node | null;
+    if (!currentTarget.contains(relatedTarget)) {
+      setDragOverColumn(null);
+    }
+  };
+
+  const handleColumnDrop = async (e: React.DragEvent, targetStatus: TaskStatus) => {
+    e.preventDefault();
+    const taskId = e.dataTransfer.getData('text/plain') || draggedTaskId;
+    setDraggedTaskId(null);
+    setDragOverColumn(null);
+
+    if (!taskId) return;
+
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+
+    if (task.status === targetStatus) return; // Already in target status
+
+    const previousStatus = task.status;
+
+    // Optimistic UI state update: immediately move card to target column
+    setTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, status: targetStatus } : t)),
+    );
+
+    try {
+      await api.patch(`/tasks/${taskId}/status`, { status: targetStatus });
+      addToast(
+        'Status Changed',
+        `"${task.title}" moved to ${targetStatus === 'Pending' ? 'To Do' : targetStatus}`,
+        'success',
+      );
+    } catch (err: any) {
+      addToast('Error', err.message || 'Failed to update task status', 'error');
+      // Rollback on error
+      setTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? { ...t, status: previousStatus } : t)),
+      );
+    }
+  };
+
+  // Kanban Columns configuration
+  const KANBAN_COLUMNS: { id: TaskStatus; title: string; color: string; badgeBg: string; badgeColor: string }[] = [
+    { id: 'Pending', title: 'To Do', color: '#f59e0b', badgeBg: '#fef3c7', badgeColor: '#b45309' },
+    { id: 'In Progress', title: 'In Progress', color: '#6366f1', badgeBg: '#e0e7ff', badgeColor: '#4338ca' },
+    { id: 'Completed', title: 'Completed', color: '#10b981', badgeBg: '#dcfce7', badgeColor: '#15803d' },
+  ];
 
   return (
     <div>
       {/* Top Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <h1 style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a' }}>Tasks</h1>
           <p style={{ fontSize: '13.5px', color: '#64748b', marginTop: '2px' }}>
-            Plan, reorder, and track tasks with persistent drag-and-drop sequencing.
+            Plan, reorder, and track tasks with list reordering and interactive Kanban board status transitions.
           </p>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          {/* View Mode Switcher (List vs Board) */}
+          <div
+            style={{
+              display: 'inline-flex',
+              padding: '3px',
+              borderRadius: '10px',
+              backgroundColor: '#f1f5f9',
+              border: '1px solid #e2e8f0',
+            }}
+          >
+            <button
+              onClick={() => handleViewModeChange('table')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '7px 14px',
+                borderRadius: '8px',
+                fontSize: '12.5px',
+                fontWeight: 600,
+                border: 'none',
+                cursor: 'pointer',
+                backgroundColor: viewMode === 'table' ? '#ffffff' : 'transparent',
+                color: viewMode === 'table' ? '#0f172a' : '#64748b',
+                boxShadow: viewMode === 'table' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                transition: 'all 0.15s ease',
+              }}
+              title="Table / List View"
+            >
+              <LayoutList size={15} />
+              <span>List</span>
+            </button>
+
+            <button
+              onClick={() => handleViewModeChange('board')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '7px 14px',
+                borderRadius: '8px',
+                fontSize: '12.5px',
+                fontWeight: 600,
+                border: 'none',
+                cursor: 'pointer',
+                backgroundColor: viewMode === 'board' ? '#ffffff' : 'transparent',
+                color: viewMode === 'board' ? '#0f172a' : '#64748b',
+                boxShadow: viewMode === 'board' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                transition: 'all 0.15s ease',
+              }}
+              title="Kanban Board View (Drag tasks between status columns)"
+            >
+              <Kanban size={15} />
+              <span>Board</span>
+            </button>
+          </div>
+
           {/* Search Box */}
           <div
             style={{
@@ -503,7 +641,7 @@ export const TasksPage: React.FC = () => {
               border: '1px solid #e2e8f0',
               borderRadius: '10px',
               padding: '8px 14px',
-              width: '260px',
+              width: '240px',
             }}
           >
             <Search size={16} color="#94a3b8" style={{ marginRight: '8px' }} />
@@ -701,9 +839,11 @@ export const TasksPage: React.FC = () => {
               justifyContent: 'space-between',
               fontSize: '13px',
               color: '#3730a3',
+              flexWrap: 'wrap',
+              gap: '8px',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
               <span>Filtering tasks for:</span>
               <span
                 style={{
@@ -718,7 +858,9 @@ export const TasksPage: React.FC = () => {
                 {projects.find((p) => p.id === selectedProjectId)?.name || 'Selected Project'}
               </span>
               <span style={{ color: '#6366f1', fontSize: '12px' }}>
-                (Drag & drop rows using the grip handle or arrows to reorder)
+                {viewMode === 'board'
+                  ? '• Drag cards between columns to change status'
+                  : '• Drag rows using grip handle or click arrows to reorder'}
               </span>
             </div>
             <button
@@ -740,7 +882,7 @@ export const TasksPage: React.FC = () => {
           </div>
         )}
 
-        {/* Filter Pills Bar & Project Selector */}
+        {/* Filter Bar & Project Selector */}
         <div
           style={{
             padding: '16px 24px',
@@ -752,46 +894,54 @@ export const TasksPage: React.FC = () => {
             gap: '16px',
           }}
         >
-          {/* Filter Pills */}
+          {/* Filter Pills (active in table view) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {[
-              { label: 'All', count: stats.total },
-              { label: 'To Do', count: stats.pending },
-              { label: 'In Progress', count: stats.inProgress },
-              { label: 'Completed', count: stats.completed },
-            ].map((tab) => (
-              <button
-                key={tab.label}
-                onClick={() => setActiveTab(tab.label as any)}
-                style={{
-                  padding: '7px 18px',
-                  borderRadius: '8px',
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  backgroundColor: activeTab === tab.label ? '#4f46e5' : '#f8fafc',
-                  color: activeTab === tab.label ? '#ffffff' : '#475569',
-                  border: activeTab === tab.label ? 'none' : '1px solid #e2e8f0',
-                  transition: 'all 0.15s ease',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}
-              >
-                <span>{tab.label}</span>
-                <span
+            {viewMode === 'table' ? (
+              [
+                { label: 'All', count: stats.total },
+                { label: 'To Do', count: stats.pending },
+                { label: 'In Progress', count: stats.inProgress },
+                { label: 'Completed', count: stats.completed },
+              ].map((tab) => (
+                <button
+                  key={tab.label}
+                  onClick={() => setActiveTab(tab.label as any)}
                   style={{
-                    fontSize: '11px',
-                    padding: '1px 6px',
-                    borderRadius: '10px',
-                    backgroundColor: activeTab === tab.label ? 'rgba(255,255,255,0.25)' : '#e2e8f0',
+                    padding: '7px 18px',
+                    borderRadius: '8px',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    backgroundColor: activeTab === tab.label ? '#4f46e5' : '#f8fafc',
                     color: activeTab === tab.label ? '#ffffff' : '#475569',
+                    border: activeTab === tab.label ? 'none' : '1px solid #e2e8f0',
+                    transition: 'all 0.15s ease',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
                   }}
                 >
-                  {tab.count}
-                </span>
-              </button>
-            ))}
+                  <span>{tab.label}</span>
+                  <span
+                    style={{
+                      fontSize: '11px',
+                      padding: '1px 6px',
+                      borderRadius: '10px',
+                      backgroundColor: activeTab === tab.label ? 'rgba(255,255,255,0.25)' : '#e2e8f0',
+                      color: activeTab === tab.label ? '#ffffff' : '#475569',
+                    }}
+                  >
+                    {tab.count}
+                  </span>
+                </button>
+              ))
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b' }}>
+                <Kanban size={16} color="#4f46e5" />
+                <span style={{ fontWeight: 600, color: '#0f172a' }}>Kanban Board</span>
+                <span>— Drag any card and drop into a column to update its status.</span>
+              </div>
+            )}
           </div>
 
           {/* Project Selector Dropdown */}
@@ -822,330 +972,649 @@ export const TasksPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Task Table */}
-        <div style={{ overflowX: 'auto' }}>
-          {isLoading ? (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px', color: '#64748b', gap: '10px' }}>
-              <Loader2 size={24} className="animate-spin" />
-              <span>Loading tasks...</span>
-            </div>
-          ) : filteredTasks.length === 0 ? (
-            <div style={{ padding: '60px 20px', textAlign: 'center', color: '#64748b' }}>
-              <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: '#f1f5f9', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: '12px' }}>
-                <CheckCircle2 size={24} color="#94a3b8" />
+        {/* ============================================================================ */}
+        {/* VIEW 1: TABLE / LIST VIEW                                                   */}
+        {/* ============================================================================ */}
+        {viewMode === 'table' ? (
+          <div style={{ overflowX: 'auto' }}>
+            {isLoading ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px', color: '#64748b', gap: '10px' }}>
+                <Loader2 size={24} className="animate-spin" />
+                <span>Loading tasks...</span>
               </div>
-              <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#1e293b' }}>No tasks found</h3>
-              <p style={{ fontSize: '13.5px', marginTop: '4px' }}>
-                {search ? 'No tasks match your search criteria' : 'Create your first task to get started'}
-              </p>
-            </div>
-          ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13.5px' }}>
-              <thead>
-                <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontWeight: 600, fontSize: '12.5px' }}>
-                  <th style={{ padding: '14px 16px', width: '56px', textAlign: 'center' }} title="Drag handle / Reorder">
-                    <GripVertical size={16} color="#94a3b8" style={{ display: 'inline-block' }} />
-                  </th>
-                  <th style={{ padding: '14px 16px', width: '45px' }}>#</th>
-                  <th style={{ padding: '14px 20px', minWidth: '220px' }}>Task Title</th>
-                  <th style={{ padding: '14px 16px' }}>Project</th>
-                  <th style={{ padding: '14px 16px' }}>Assignees</th>
-                  <th style={{ padding: '14px 16px' }}>Priority</th>
-                  <th style={{ padding: '14px 16px' }}>Status</th>
-                  <th style={{ padding: '14px 16px' }}>Due Date</th>
-                  <th style={{ padding: '14px 20px', textAlign: 'center', width: '100px' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredTasks.map((task, index) => {
-                  const isBeingDragged = draggedTaskId === task.id;
-                  const isDropTarget = dragOverTaskId === task.id;
+            ) : filteredTasks.length === 0 ? (
+              <div style={{ padding: '60px 20px', textAlign: 'center', color: '#64748b' }}>
+                <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: '#f1f5f9', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: '12px' }}>
+                  <CheckCircle2 size={24} color="#94a3b8" />
+                </div>
+                <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#1e293b' }}>No tasks found</h3>
+                <p style={{ fontSize: '13.5px', marginTop: '4px' }}>
+                  {search ? 'No tasks match your search criteria' : 'Create your first task to get started'}
+                </p>
+              </div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13.5px' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontWeight: 600, fontSize: '12.5px' }}>
+                    <th style={{ padding: '14px 16px', width: '56px', textAlign: 'center' }} title="Drag handle / Reorder">
+                      <GripVertical size={16} color="#94a3b8" style={{ display: 'inline-block' }} />
+                    </th>
+                    <th style={{ padding: '14px 16px', width: '45px' }}>#</th>
+                    <th style={{ padding: '14px 20px', minWidth: '220px' }}>Task Title</th>
+                    <th style={{ padding: '14px 16px' }}>Project</th>
+                    <th style={{ padding: '14px 16px' }}>Assignees</th>
+                    <th style={{ padding: '14px 16px' }}>Priority</th>
+                    <th style={{ padding: '14px 16px' }}>Status</th>
+                    <th style={{ padding: '14px 16px' }}>Due Date</th>
+                    <th style={{ padding: '14px 20px', textAlign: 'center', width: '100px' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredTasks.map((task, index) => {
+                    const isBeingDragged = draggedTaskId === task.id;
+                    const isDropTarget = dragOverTaskId === task.id;
 
-                  // Find index within the same project for Move Up/Down bounds
-                  const sameProjectTasks = tasks.filter((t) => t.projectId === task.projectId);
-                  const projectIndex = sameProjectTasks.findIndex((t) => t.id === task.id);
-                  const canMoveUp = projectIndex > 0;
-                  const canMoveDown = projectIndex < sameProjectTasks.length - 1;
+                    const sameProjectTasks = tasks.filter((t) => t.projectId === task.projectId);
+                    const projectIndex = sameProjectTasks.findIndex((t) => t.id === task.id);
+                    const canMoveUp = projectIndex > 0;
+                    const canMoveDown = projectIndex < sameProjectTasks.length - 1;
 
-                  return (
-                    <tr
-                      key={task.id}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, task.id)}
-                      onDragOver={(e) => handleDragOver(e, task.id)}
-                      onDragLeave={handleDragLeave}
-                      onDrop={(e) => handleDrop(e, task.id)}
-                      onDragEnd={handleDragEnd}
-                      style={{
-                        borderBottom: '1px solid #f1f5f9',
-                        cursor: 'grab',
-                        transition: 'all 0.15s ease',
-                        opacity: isBeingDragged ? 0.45 : 1,
-                        backgroundColor: isBeingDragged ? '#f1f5f9' : 'transparent',
-                        boxShadow: isDropTarget
-                          ? dragPosition === 'above'
-                            ? 'inset 0 3px 0 0 #4f46e5'
-                            : 'inset 0 -3px 0 0 #4f46e5'
-                          : 'none',
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!isBeingDragged) e.currentTarget.style.backgroundColor = '#fafafa';
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!isBeingDragged) e.currentTarget.style.backgroundColor = 'transparent';
-                      }}
-                    >
-                      {/* Grip Handle and 1-Click Move Arrows */}
-                      <td style={{ padding: '14px 12px', textAlign: 'center', color: '#94a3b8' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                          <span title="Drag to reorder" style={{ cursor: 'grab' }}>
-                            <GripVertical size={16} />
-                          </span>
-                          <div style={{ display: 'inline-flex', flexDirection: 'column' }}>
-                            <button
-                              onClick={() => handleMoveTask(task.id, 'up')}
-                              disabled={!canMoveUp}
-                              title="Move task up"
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                cursor: canMoveUp ? 'pointer' : 'default',
-                                opacity: canMoveUp ? 0.7 : 0.2,
-                                padding: 0,
-                                lineHeight: 1,
-                              }}
-                            >
-                              <ChevronUp size={12} color={canMoveUp ? '#4f46e5' : '#94a3b8'} />
-                            </button>
-                            <button
-                              onClick={() => handleMoveTask(task.id, 'down')}
-                              disabled={!canMoveDown}
-                              title="Move task down"
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                cursor: canMoveDown ? 'pointer' : 'default',
-                                opacity: canMoveDown ? 0.7 : 0.2,
-                                padding: 0,
-                                lineHeight: 1,
-                              }}
-                            >
-                              <ChevronDown size={12} color={canMoveDown ? '#4f46e5' : '#94a3b8'} />
-                            </button>
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Order Number */}
-                      <td style={{ padding: '14px 16px', color: '#64748b', fontSize: '12.5px', fontWeight: 600 }}>
-                        <span
-                          style={{
-                            display: 'inline-block',
-                            padding: '2px 6px',
-                            borderRadius: '4px',
-                            backgroundColor: '#f1f5f9',
-                            color: '#475569',
-                            minWidth: '22px',
-                            textAlign: 'center',
-                          }}
-                        >
-                          {task.orderIndex || index + 1}
-                        </span>
-                      </td>
-
-                      {/* Title & Description */}
-                      <td style={{ padding: '14px 20px', fontWeight: 600, color: '#0f172a' }}>
-                        <div>{task.title}</div>
-                        {task.description && (
-                          <div
-                            style={{
-                              fontSize: '12px',
-                              color: '#64748b',
-                              fontWeight: 400,
-                              marginTop: '2px',
-                              maxWidth: '360px',
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                            }}
-                            title={task.description}
-                          >
-                            {task.description}
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Project Name */}
-                      <td style={{ padding: '14px 16px', color: '#475569' }}>
-                        <span
-                          style={{
-                            padding: '3px 9px',
-                            borderRadius: '6px',
-                            backgroundColor: '#f1f5f9',
-                            fontSize: '12px',
-                            fontWeight: 500,
-                            color: '#334155',
-                          }}
-                        >
-                          {task.projectName || 'Project'}
-                        </span>
-                      </td>
-
-                      {/* Assignees */}
-                      <td style={{ padding: '14px 16px' }}>
-                        {task.assignees && task.assignees.length > 0 ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            {task.assignees.slice(0, 3).map((a) => (
-                              <div
-                                key={a.id}
-                                title={`${a.fullName} (${a.email})`}
+                    return (
+                      <tr
+                        key={task.id}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, task.id)}
+                        onDragOver={(e) => handleDragOver(e, task.id)}
+                        onDragLeave={handleDragLeave}
+                        onDrop={(e) => handleDrop(e, task.id)}
+                        onDragEnd={handleDragEnd}
+                        style={{
+                          borderBottom: '1px solid #f1f5f9',
+                          cursor: 'grab',
+                          transition: 'all 0.15s ease',
+                          opacity: isBeingDragged ? 0.45 : 1,
+                          backgroundColor: isBeingDragged ? '#f1f5f9' : 'transparent',
+                          boxShadow: isDropTarget
+                            ? dragPosition === 'above'
+                              ? 'inset 0 3px 0 0 #4f46e5'
+                              : 'inset 0 -3px 0 0 #4f46e5'
+                            : 'none',
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isBeingDragged) e.currentTarget.style.backgroundColor = '#fafafa';
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isBeingDragged) e.currentTarget.style.backgroundColor = 'transparent';
+                        }}
+                      >
+                        {/* Grip Handle and 1-Click Move Arrows */}
+                        <td style={{ padding: '14px 12px', textAlign: 'center', color: '#94a3b8' }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <span title="Drag to reorder" style={{ cursor: 'grab' }}>
+                              <GripVertical size={16} />
+                            </span>
+                            <div style={{ display: 'inline-flex', flexDirection: 'column' }}>
+                              <button
+                                onClick={() => handleMoveTask(task.id, 'up')}
+                                disabled={!canMoveUp}
+                                title="Move task up"
                                 style={{
-                                  width: '26px',
-                                  height: '26px',
-                                  borderRadius: '50%',
-                                  backgroundColor: '#4f46e5',
-                                  color: '#ffffff',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  fontSize: '10.5px',
-                                  fontWeight: 700,
-                                  border: '1.5px solid #ffffff',
+                                  background: 'none',
+                                  border: 'none',
+                                  cursor: canMoveUp ? 'pointer' : 'default',
+                                  opacity: canMoveUp ? 0.7 : 0.2,
+                                  padding: 0,
+                                  lineHeight: 1,
                                 }}
                               >
-                                {a.fullName
-                                  ? a.fullName
-                                      .split(' ')
-                                      .map((n) => n[0])
-                                      .join('')
-                                      .toUpperCase()
-                                      .slice(0, 2)
-                                  : 'U'}
-                              </div>
-                            ))}
-                            {task.assignees.length > 3 && (
-                              <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>
-                                +{task.assignees.length - 3}
-                              </span>
-                            )}
+                                <ChevronUp size={12} color={canMoveUp ? '#4f46e5' : '#94a3b8'} />
+                              </button>
+                              <button
+                                onClick={() => handleMoveTask(task.id, 'down')}
+                                disabled={!canMoveDown}
+                                title="Move task down"
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  cursor: canMoveDown ? 'pointer' : 'default',
+                                  opacity: canMoveDown ? 0.7 : 0.2,
+                                  padding: 0,
+                                  lineHeight: 1,
+                                }}
+                              >
+                                <ChevronDown size={12} color={canMoveDown ? '#4f46e5' : '#94a3b8'} />
+                              </button>
+                            </div>
                           </div>
-                        ) : (
-                          <span style={{ fontSize: '12px', color: '#94a3b8' }}>Unassigned</span>
-                        )}
-                      </td>
+                        </td>
 
-                      {/* Priority */}
-                      <td style={{ padding: '14px 16px' }}>
-                        <span
-                          style={{
-                            padding: '3px 8px',
-                            borderRadius: '6px',
-                            fontSize: '11.5px',
-                            fontWeight: 700,
-                            backgroundColor:
-                              task.priority === 'High'
+                        {/* Order Number */}
+                        <td style={{ padding: '14px 16px', color: '#64748b', fontSize: '12.5px', fontWeight: 600 }}>
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              backgroundColor: '#f1f5f9',
+                              color: '#475569',
+                              minWidth: '22px',
+                              textAlign: 'center',
+                            }}
+                          >
+                            {task.orderIndex || index + 1}
+                          </span>
+                        </td>
+
+                        {/* Title & Description */}
+                        <td style={{ padding: '14px 20px', fontWeight: 600, color: '#0f172a' }}>
+                          <div>{task.title}</div>
+                          {task.description && (
+                            <div
+                              style={{
+                                fontSize: '12px',
+                                color: '#64748b',
+                                fontWeight: 400,
+                                marginTop: '2px',
+                                maxWidth: '360px',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                              }}
+                              title={task.description}
+                            >
+                              {task.description}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* Project Name */}
+                        <td style={{ padding: '14px 16px', color: '#475569' }}>
+                          <span
+                            style={{
+                              padding: '3px 9px',
+                              borderRadius: '6px',
+                              backgroundColor: '#f1f5f9',
+                              fontSize: '12px',
+                              fontWeight: 500,
+                              color: '#334155',
+                            }}
+                          >
+                            {task.projectName || 'Project'}
+                          </span>
+                        </td>
+
+                        {/* Assignees */}
+                        <td style={{ padding: '14px 16px' }}>
+                          {task.assignees && task.assignees.length > 0 ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              {task.assignees.slice(0, 3).map((a) => (
+                                <div
+                                  key={a.id}
+                                  title={`${a.fullName} (${a.email})`}
+                                  style={{
+                                    width: '26px',
+                                    height: '26px',
+                                    borderRadius: '50%',
+                                    backgroundColor: '#4f46e5',
+                                    color: '#ffffff',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '10.5px',
+                                    fontWeight: 700,
+                                    border: '1.5px solid #ffffff',
+                                  }}
+                                >
+                                  {a.fullName
+                                    ? a.fullName
+                                        .split(' ')
+                                        .map((n) => n[0])
+                                        .join('')
+                                        .toUpperCase()
+                                        .slice(0, 2)
+                                    : 'U'}
+                                </div>
+                              ))}
+                              {task.assignees.length > 3 && (
+                                <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>
+                                  +{task.assignees.length - 3}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: '12px', color: '#94a3b8' }}>Unassigned</span>
+                          )}
+                        </td>
+
+                        {/* Priority */}
+                        <td style={{ padding: '14px 16px' }}>
+                          <span
+                            style={{
+                              padding: '3px 8px',
+                              borderRadius: '6px',
+                              fontSize: '11.5px',
+                              fontWeight: 700,
+                              backgroundColor:
+                                task.priority === 'High'
                                 ? '#fee2e2'
                                 : task.priority === 'Medium'
                                 ? '#fef3c7'
                                 : '#e0e7ff',
-                            color:
-                              task.priority === 'High'
+                              color:
+                                task.priority === 'High'
                                 ? '#b91c1c'
                                 : task.priority === 'Medium'
                                 ? '#b45309'
                                 : '#4338ca',
-                          }}
-                        >
-                          {task.priority || 'Medium'}
-                        </span>
-                      </td>
-
-                      {/* Status Dropdown */}
-                      <td style={{ padding: '14px 16px' }}>
-                        <select
-                          value={task.status}
-                          onChange={(e) => handleStatusChange(task.id, e.target.value)}
-                          style={{
-                            padding: '4px 10px',
-                            borderRadius: '16px',
-                            fontSize: '12px',
-                            fontWeight: 700,
-                            border: 'none',
-                            cursor: 'pointer',
-                            outline: 'none',
-                            backgroundColor:
-                              task.status === 'Completed'
-                                ? '#dcfce7'
-                                : task.status === 'In Progress'
-                                ? '#e0e7ff'
-                                : '#fef3c7',
-                            color:
-                              task.status === 'Completed'
-                                ? '#15803d'
-                                : task.status === 'In Progress'
-                                ? '#4338ca'
-                                : '#b45309',
-                          }}
-                        >
-                          <option value="Pending">Pending (To Do)</option>
-                          <option value="In Progress">In Progress</option>
-                          <option value="Completed">Completed</option>
-                        </select>
-                      </td>
-
-                      {/* Due Date */}
-                      <td style={{ padding: '14px 16px', color: '#475569' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <Calendar size={14} color="#94a3b8" />
-                          <span>{task.dueDate ? formatDateWithSetting(task.dueDate) : 'No due date'}</span>
-                        </div>
-                      </td>
-
-                      {/* Actions */}
-                      <td style={{ padding: '14px 20px', textAlign: 'center' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                          <button
-                            onClick={() => openEditModal(task)}
-                            style={{
-                              color: '#64748b',
-                              padding: '6px',
-                              borderRadius: '6px',
-                              cursor: 'pointer',
-                              border: 'none',
-                              background: 'transparent',
                             }}
-                            title="Edit Task"
                           >
-                            <Edit2 size={16} />
-                          </button>
-                          {isAdmin && (
+                            {task.priority || 'Medium'}
+                          </span>
+                        </td>
+
+                        {/* Status Dropdown */}
+                        <td style={{ padding: '14px 16px' }}>
+                          <select
+                            value={task.status}
+                            onChange={(e) => handleStatusChange(task.id, e.target.value)}
+                            style={{
+                              padding: '4px 10px',
+                              borderRadius: '16px',
+                              fontSize: '12px',
+                              fontWeight: 700,
+                              border: 'none',
+                              cursor: 'pointer',
+                              outline: 'none',
+                              backgroundColor:
+                                task.status === 'Completed'
+                                  ? '#dcfce7'
+                                  : task.status === 'In Progress'
+                                  ? '#e0e7ff'
+                                  : '#fef3c7',
+                              color:
+                                task.status === 'Completed'
+                                  ? '#15803d'
+                                  : task.status === 'In Progress'
+                                  ? '#4338ca'
+                                  : '#b45309',
+                            }}
+                          >
+                            <option value="Pending">Pending (To Do)</option>
+                            <option value="In Progress">In Progress</option>
+                            <option value="Completed">Completed</option>
+                          </select>
+                        </td>
+
+                        {/* Due Date */}
+                        <td style={{ padding: '14px 16px', color: '#475569' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Calendar size={14} color="#94a3b8" />
+                            <span>{task.dueDate ? formatDateWithSetting(task.dueDate) : 'No due date'}</span>
+                          </div>
+                        </td>
+
+                        {/* Actions */}
+                        <td style={{ padding: '14px 20px', textAlign: 'center' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                             <button
-                              onClick={() => handleDeleteTask(task.id, task.title)}
+                              onClick={() => openEditModal(task)}
                               style={{
-                                color: '#ef4444',
+                                color: '#64748b',
                                 padding: '6px',
                                 borderRadius: '6px',
                                 cursor: 'pointer',
                                 border: 'none',
                                 background: 'transparent',
                               }}
-                              title="Delete Task (Admin Only)"
+                              title="Edit Task"
                             >
-                              <Trash2 size={16} />
+                              <Edit2 size={16} />
                             </button>
-                          )}
+                            {isAdmin && (
+                              <button
+                                onClick={() => handleDeleteTask(task.id, task.title)}
+                                style={{
+                                  color: '#ef4444',
+                                  padding: '6px',
+                                  borderRadius: '6px',
+                                  cursor: 'pointer',
+                                  border: 'none',
+                                  background: 'transparent',
+                                }}
+                                title="Delete Task (Admin Only)"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        ) : (
+          /* ============================================================================ */
+          /* VIEW 2: KANBAN BOARD VIEW (Drag & Drop Between Status Columns)               */
+          /* ============================================================================ */
+          <div style={{ padding: '24px', backgroundColor: '#f8fafc', minHeight: '620px' }}>
+            {isLoading ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px', color: '#64748b', gap: '10px' }}>
+                <Loader2 size={24} className="animate-spin" />
+                <span>Loading board...</span>
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(310px, 1fr))',
+                  gap: '20px',
+                  alignItems: 'flex-start',
+                }}
+              >
+                {KANBAN_COLUMNS.map((column) => {
+                  const columnTasks = filteredTasks.filter((t) => t.status === column.id);
+                  const isHovered = dragOverColumn === column.id;
+
+                  return (
+                    <div
+                      key={column.id}
+                      onDragOver={(e) => handleColumnDragOver(e, column.id)}
+                      onDragLeave={handleColumnDragLeave}
+                      onDrop={(e) => handleColumnDrop(e, column.id)}
+                      style={{
+                        backgroundColor: isHovered ? '#f0fdf4' : '#ffffff',
+                        borderRadius: '14px',
+                        border: isHovered ? `2px dashed ${column.color}` : '1px solid #e2e8f0',
+                        padding: '16px',
+                        minHeight: '520px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        transition: 'all 0.15s ease',
+                        boxShadow: isHovered
+                          ? '0 4px 12px rgba(79, 70, 229, 0.1)'
+                          : '0 1px 3px rgba(15, 23, 42, 0.03)',
+                      }}
+                    >
+                      {/* Column Header */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          marginBottom: '14px',
+                          paddingBottom: '12px',
+                          borderBottom: '1px solid #f1f5f9',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span
+                            style={{
+                              width: '9px',
+                              height: '9px',
+                              borderRadius: '50%',
+                              backgroundColor: column.color,
+                              display: 'inline-block',
+                            }}
+                          />
+                          <span style={{ fontSize: '14px', fontWeight: 800, color: '#0f172a' }}>
+                            {column.title}
+                          </span>
                         </div>
-                      </td>
-                    </tr>
+
+                        <span
+                          style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            backgroundColor: column.badgeBg,
+                            color: column.badgeColor,
+                            fontSize: '11.5px',
+                            fontWeight: 700,
+                          }}
+                        >
+                          {columnTasks.length}
+                        </span>
+                      </div>
+
+                      {/* Drop Zone Placeholder hint when dragging */}
+                      {isHovered && (
+                        <div
+                          style={{
+                            padding: '12px',
+                            borderRadius: '10px',
+                            backgroundColor: column.badgeBg,
+                            color: column.badgeColor,
+                            fontSize: '12px',
+                            fontWeight: 700,
+                            textAlign: 'center',
+                            marginBottom: '12px',
+                            border: `1.5px dashed ${column.color}`,
+                          }}
+                        >
+                          + Drop here to move to {column.title}
+                        </div>
+                      )}
+
+                      {/* Task Cards */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1 }}>
+                        {columnTasks.length === 0 && !isHovered ? (
+                          <div
+                            style={{
+                              padding: '40px 16px',
+                              textAlign: 'center',
+                              borderRadius: '10px',
+                              border: '1.5px dashed #e2e8f0',
+                              color: '#94a3b8',
+                              fontSize: '12.5px',
+                            }}
+                          >
+                            <div>No tasks in this column</div>
+                            <div style={{ fontSize: '11px', marginTop: '4px', color: '#cbd5e1' }}>
+                              Drag a task card here to change status
+                            </div>
+                          </div>
+                        ) : (
+                          columnTasks.map((task) => {
+                            const isBeingDragged = draggedTaskId === task.id;
+
+                            return (
+                              <div
+                                key={task.id}
+                                draggable
+                                onDragStart={(e) => handleDragStart(e, task.id)}
+                                onDragEnd={handleDragEnd}
+                                style={{
+                                  backgroundColor: '#ffffff',
+                                  borderRadius: '10px',
+                                  border: '1px solid #e2e8f0',
+                                  padding: '14px',
+                                  cursor: 'grab',
+                                  opacity: isBeingDragged ? 0.4 : 1,
+                                  boxShadow: '0 1px 3px rgba(15, 23, 42, 0.04)',
+                                  transition: 'transform 0.12s ease, box-shadow 0.12s ease',
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (!isBeingDragged) {
+                                    e.currentTarget.style.transform = 'translateY(-2px)';
+                                    e.currentTarget.style.boxShadow = '0 4px 8px -2px rgba(15, 23, 42, 0.08)';
+                                  }
+                                }}
+                                onMouseLeave={(e) => {
+                                  if (!isBeingDragged) {
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                    e.currentTarget.style.boxShadow = '0 1px 3px rgba(15, 23, 42, 0.04)';
+                                  }
+                                }}
+                              >
+                                {/* Top Row: Project badge & Priority */}
+                                <div
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    marginBottom: '8px',
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      fontSize: '11px',
+                                      fontWeight: 600,
+                                      padding: '2px 7px',
+                                      borderRadius: '4px',
+                                      backgroundColor: '#f1f5f9',
+                                      color: '#475569',
+                                    }}
+                                  >
+                                    {task.projectName || 'Project'}
+                                  </span>
+
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span
+                                      style={{
+                                        fontSize: '10.5px',
+                                        fontWeight: 700,
+                                        padding: '2px 6px',
+                                        borderRadius: '4px',
+                                        backgroundColor:
+                                          task.priority === 'High'
+                                            ? '#fee2e2'
+                                            : task.priority === 'Medium'
+                                            ? '#fef3c7'
+                                            : '#e0e7ff',
+                                        color:
+                                          task.priority === 'High'
+                                            ? '#b91c1c'
+                                            : task.priority === 'Medium'
+                                            ? '#b45309'
+                                            : '#4338ca',
+                                      }}
+                                    >
+                                      {task.priority || 'Medium'}
+                                    </span>
+                                    <GripVertical size={14} color="#94a3b8" />
+                                  </div>
+                                </div>
+
+                                {/* Task Title */}
+                                <div
+                                  style={{
+                                    fontSize: '13.5px',
+                                    fontWeight: 700,
+                                    color: '#0f172a',
+                                    marginBottom: '4px',
+                                    lineHeight: 1.35,
+                                  }}
+                                >
+                                  {task.title}
+                                </div>
+
+                                {/* Description */}
+                                {task.description && (
+                                  <div
+                                    style={{
+                                      fontSize: '12px',
+                                      color: '#64748b',
+                                      marginBottom: '10px',
+                                      lineHeight: 1.4,
+                                      display: '-webkit-box',
+                                      WebkitLineClamp: 2,
+                                      WebkitBoxOrient: 'vertical',
+                                      overflow: 'hidden',
+                                    }}
+                                  >
+                                    {task.description}
+                                  </div>
+                                )}
+
+                                {/* Card Footer: Assignees, Due Date, Actions */}
+                                <div
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    paddingTop: '10px',
+                                    borderTop: '1px solid #f8fafc',
+                                  }}
+                                >
+                                  {/* Due Date */}
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#64748b' }}>
+                                    <Calendar size={12} color="#94a3b8" />
+                                    <span>{task.dueDate ? formatDateWithSetting(task.dueDate) : 'No due date'}</span>
+                                  </div>
+
+                                  {/* Assignee & Actions */}
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    {task.assignees && task.assignees.length > 0 && (
+                                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                                        {task.assignees.slice(0, 2).map((a) => (
+                                          <div
+                                            key={a.id}
+                                            title={a.fullName}
+                                            style={{
+                                              width: '22px',
+                                              height: '22px',
+                                              borderRadius: '50%',
+                                              backgroundColor: '#4f46e5',
+                                              color: '#ffffff',
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              justifyContent: 'center',
+                                              fontSize: '9.5px',
+                                              fontWeight: 700,
+                                              border: '1.5px solid #ffffff',
+                                              marginLeft: '-4px',
+                                            }}
+                                          >
+                                            {a.fullName
+                                              ? a.fullName
+                                                  .split(' ')
+                                                  .map((n) => n[0])
+                                                  .join('')
+                                                  .toUpperCase()
+                                                  .slice(0, 2)
+                                              : 'U'}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+
+                                    <button
+                                      onClick={() => openEditModal(task)}
+                                      style={{ color: '#64748b', padding: '4px', borderRadius: '4px', border: 'none', background: 'transparent', cursor: 'pointer' }}
+                                      title="Edit Task"
+                                    >
+                                      <Edit2 size={13} />
+                                    </button>
+                                    {isAdmin && (
+                                      <button
+                                        onClick={() => handleDeleteTask(task.id, task.title)}
+                                        style={{ color: '#ef4444', padding: '4px', borderRadius: '4px', border: 'none', background: 'transparent', cursor: 'pointer' }}
+                                        title="Delete Task"
+                                      >
+                                        <Trash2 size={13} />
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
                   );
                 })}
-              </tbody>
-            </table>
-          )}
-        </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Modal: Create Task */}
+      {/* ============================================================================ */}
+      {/* MODAL: CREATE TASK                                                           */}
+      {/* ============================================================================ */}
       <Modal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
@@ -1343,7 +1812,9 @@ export const TasksPage: React.FC = () => {
         </form>
       </Modal>
 
-      {/* Modal: Edit Task */}
+      {/* ============================================================================ */}
+      {/* MODAL: EDIT TASK                                                             */}
+      {/* ============================================================================ */}
       <Modal
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}

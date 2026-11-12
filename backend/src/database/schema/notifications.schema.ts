@@ -19,3 +19,7 @@ export const notifications = pgTable(
     index('idx_notifications_user_read').on(table.userId, table.isRead, table.createdAt),
   ],
 );
+
+export type Notification = typeof notifications.$inferSelect;
+export type NewNotification = typeof notifications.$inferInsert;
+

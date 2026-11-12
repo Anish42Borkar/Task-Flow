@@ -308,24 +308,6 @@ export class ProjectsService {
           console.warn(`Failed to dispatch notification to actor ${actor.id}`, e);
         }
       }
-      if (actor && actor.id) {
-        try {
-          const assignedUsers = await this.db
-            .select({ id: schema.users.id, fullName: schema.users.fullName })
-            .from(schema.users)
-            .where(inArray(schema.users.id, toAdd));
-          const userNames = assignedUsers.map((u) => u.fullName).join(', ');
-          await this.notificationsService.createNotification(
-            actor.id,
-            'Team Member Assigned',
-            `You assigned ${userNames || 'team member'} to project "${project.name}".`,
-            'project_assigned',
-            projectId,
-          );
-        } catch (e) {
-          console.warn(`Failed to dispatch notification to actor ${actor.id}`, e);
-        }
-      }
     }
 
     // Return refreshed members

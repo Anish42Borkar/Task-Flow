@@ -303,7 +303,7 @@ export const NotificationsPage: React.FC = () => {
                         minute: "2-digit",
                       })}
                     </span>
-                    {!item.isRead ? (
+                    {/* {!item.isRead ? (
                       <span
                         title="Unread notification"
                         style={{
@@ -326,7 +326,7 @@ export const NotificationsPage: React.FC = () => {
                       >
                         Just read
                       </span>
-                    ) : null}
+                    ) : null} */}
                   </div>
                 </div>
               );

@@ -44,7 +44,9 @@ export interface Project {
   completedTasksCount?: number;
   progressPercentage?: number;
   members?: User[];
+  createdBy?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface NotificationItem {

@@ -28,6 +28,7 @@ const MODULE_ICONS: Record<string, React.ReactNode> = {
   projects: <Folder size={18} color="#4f46e5" />,
   tasks: <CheckSquare size={18} color="#4f46e5" />,
   users: <Users size={18} color="#4f46e5" />,
+  user_management: <Users size={18} color="#4f46e5" />,
   permissions: <ShieldCheck size={18} color="#4f46e5" />,
   notifications: <Bell size={18} color="#4f46e5" />,
   settings: <SettingsIcon size={18} color="#4f46e5" />,
@@ -37,10 +38,20 @@ const MODULE_NAMES: Record<string, string> = {
   projects: 'Projects',
   tasks: 'Tasks',
   users: 'User Management',
+  user_management: 'User Management',
   permissions: 'Permissions',
   notifications: 'Notifications',
   settings: 'Settings',
 };
+
+const ALL_SYSTEM_MODULES = [
+  { key: 'projects', name: 'Projects', icon: <Folder size={18} color="#4f46e5" /> },
+  { key: 'tasks', name: 'Tasks', icon: <CheckSquare size={18} color="#4f46e5" /> },
+  { key: 'user_management', name: 'User Management', icon: <Users size={18} color="#4f46e5" /> },
+  { key: 'permissions', name: 'Permissions', icon: <ShieldCheck size={18} color="#4f46e5" /> },
+  { key: 'settings', name: 'Settings', icon: <SettingsIcon size={18} color="#4f46e5" /> },
+  { key: 'notifications', name: 'Notifications', icon: <Bell size={18} color="#4f46e5" /> },
+];
 
 export const PermissionsPage: React.FC = () => {
   const { addToast } = useNotificationStore();
@@ -70,15 +81,21 @@ export const PermissionsPage: React.FC = () => {
       const data: any = await api.get(`/permissions/${selectedRoleId}`);
       const permList = Array.isArray(data) ? data : data?.permissions || [];
 
-      const rows: PermissionRow[] = permList.map((p: any) => ({
-        module: p.module,
-        name: MODULE_NAMES[p.module] || p.module,
-        icon: MODULE_ICONS[p.module] || <ShieldCheck size={18} color="#4f46e5" />,
-        canView: !!p.canView,
-        canCreate: !!p.canCreate,
-        canEdit: !!p.canEdit,
-        canDelete: !!p.canDelete,
-      }));
+      const permMap = new Map((permList || []).map((p: any) => [p.module, p]));
+
+      // Guarantee all standard system modules are always populated in the matrix
+      const rows: PermissionRow[] = ALL_SYSTEM_MODULES.map((m) => {
+        const p: any = permMap.get(m.key);
+        return {
+          module: m.key,
+          name: m.name,
+          icon: m.icon,
+          canView: p ? !!p.canView : false,
+          canCreate: p ? !!p.canCreate : false,
+          canEdit: p ? !!p.canEdit : false,
+          canDelete: p ? !!p.canDelete : false,
+        };
+      });
 
       setMatrix(rows);
     } catch (err: any) {

@@ -79,10 +79,50 @@ export class RolesService {
       throw new NotFoundException(`Role ${roleId} not found`);
     }
 
-    const permissions = await this.db
+    const modules = ['projects', 'tasks', 'user_management', 'permissions', 'settings', 'notifications'];
+    let permissions = await this.db
       .select()
       .from(schema.rolePermissions)
       .where(eq(schema.rolePermissions.roleId, roleId));
+
+    // If any modules are missing for this role, auto-initialize them
+    if (permissions.length < modules.length) {
+      const existingModules = new Set(permissions.map((p) => p.module));
+      const missing = modules.filter((m) => !existingModules.has(m));
+
+      const newEntries: schema.NewRolePermission[] = missing.map((mod) => {
+        let canView = false;
+        let canCreate = false;
+        let canEdit = false;
+        let canDelete = false;
+
+        if (roleId === 'project_manager') {
+          canView = true;
+          canCreate = mod === 'projects' || mod === 'tasks';
+          canEdit = mod === 'projects' || mod === 'tasks';
+        } else if (roleId === 'viewer') {
+          canView = mod === 'projects' || mod === 'tasks' || mod === 'notifications';
+        }
+
+        return {
+          id: `${roleId}_${mod}`,
+          roleId,
+          module: mod,
+          canView,
+          canCreate,
+          canEdit,
+          canDelete,
+        };
+      });
+
+      if (newEntries.length > 0) {
+        await this.db.insert(schema.rolePermissions).values(newEntries).onConflictDoNothing();
+        permissions = await this.db
+          .select()
+          .from(schema.rolePermissions)
+          .where(eq(schema.rolePermissions.roleId, roleId));
+      }
+    }
 
     return { role, permissions };
   }

@@ -68,6 +68,19 @@ async function seed() {
       });
     }
 
+    // Project Manager permissions
+    for (const mod of modules) {
+      permissionEntries.push({
+        id: `project_manager_${mod}`,
+        roleId: 'project_manager',
+        module: mod,
+        canView: true,
+        canCreate: mod === 'projects' || mod === 'tasks',
+        canEdit: mod === 'projects' || mod === 'tasks',
+        canDelete: false,
+      });
+    }
+
     // User permissions
     for (const mod of modules) {
       const isTaskOrProject = mod === 'tasks' || mod === 'projects' || mod === 'notifications';
@@ -78,6 +91,20 @@ async function seed() {
         canView: isTaskOrProject,
         canCreate: mod === 'tasks',
         canEdit: mod === 'tasks',
+        canDelete: false,
+      });
+    }
+
+    // Viewer permissions
+    for (const mod of modules) {
+      const canView = mod === 'projects' || mod === 'tasks' || mod === 'notifications';
+      permissionEntries.push({
+        id: `viewer_${mod}`,
+        roleId: 'viewer',
+        module: mod,
+        canView,
+        canCreate: false,
+        canEdit: false,
         canDelete: false,
       });
     }

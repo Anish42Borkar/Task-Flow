@@ -1,9 +1,22 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Mail, Lock, Eye, EyeOff, Zap, Users, BarChart3, Check } from 'lucide-react';
+import {
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  Zap,
+  Users,
+  BarChart3,
+  Check,
+  AlertCircle,
+  ShieldCheck,
+  UserCheck,
+} from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { Button } from '../../components/common/Button';
 import { api } from '../../services/api';
+import './auth.css';
 
 export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('anish.borkar@example.com');
@@ -60,332 +73,184 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', width: '100%' }}>
-      {/* Left Gradient Hero Panel */}
-      <div
-        style={{
-          flex: '1.1',
-          background: 'linear-gradient(135deg, #4f46e5 0%, #6366f1 50%, #7c3aed 100%)',
-          color: '#ffffff',
-          padding: '60px 70px',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between',
-          position: 'relative',
-          overflow: 'hidden',
-        }}
-      >
+    <div className="auth-page">
+      {/* Left Gradient Hero Panel (visible on desktop) */}
+      <div className="auth-hero-panel">
         {/* Brand Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div
-            style={{
-              width: '38px',
-              height: '38px',
-              borderRadius: '10px',
-              backgroundColor: '#ffffff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#4f46e5',
-            }}
-          >
+        <div className="auth-hero-brand">
+          <div className="auth-hero-brand-icon">
             <Check size={24} strokeWidth={3} />
           </div>
-          <span style={{ fontSize: '22px', fontWeight: 800, letterSpacing: '-0.3px' }}>
-            TaskFlow
-          </span>
+          <span className="auth-hero-brand-name">TaskFlow</span>
         </div>
 
         {/* Hero Content & Kanban Illustration Graphic */}
-        <div style={{ margin: '40px 0' }}>
-          <h1
-            style={{
-              fontSize: '44px',
-              fontWeight: 800,
-              lineHeight: 1.15,
-              letterSpacing: '-0.5px',
-              marginBottom: '16px',
-            }}
-          >
+        <div className="auth-hero-body">
+          <h1 className="auth-hero-title">
             Manage Projects,<br />Tasks and Teams
           </h1>
-          <p
-            style={{
-              fontSize: '17px',
-              color: 'rgba(255, 255, 255, 0.85)',
-              maxWidth: '440px',
-              lineHeight: 1.5,
-              marginBottom: '40px',
-            }}
-          >
+          <p className="auth-hero-subtitle">
             A simple and collaborative task management platform for your team.
           </p>
 
           {/* Kanban Board Graphic Card */}
-          <div
-            style={{
-              backgroundColor: 'rgba(255, 255, 255, 0.18)',
-              backdropFilter: 'blur(16px)',
-              borderRadius: '20px',
-              border: '1px solid rgba(255, 255, 255, 0.25)',
-              padding: '24px',
-              maxWidth: '480px',
-              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)',
-            }}
-          >
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+          <div className="auth-kanban-card">
+            <div className="auth-kanban-grid">
               {/* Column 1: Pending */}
-              <div
-                style={{
-                  backgroundColor: 'rgba(255, 255, 255, 0.92)',
-                  borderRadius: '10px',
-                  padding: '12px',
-                  color: '#1e293b',
-                }}
-              >
-                <div style={{ fontSize: '12px', fontWeight: 700, marginBottom: '8px' }}>Pending</div>
-                <div
-                  style={{
-                    height: '24px',
-                    backgroundColor: '#f1f5f9',
-                    borderRadius: '6px',
-                    marginBottom: '6px',
-                    borderLeft: '3px solid #f59e0b',
-                  }}
-                />
-                <div
-                  style={{
-                    height: '24px',
-                    backgroundColor: '#f1f5f9',
-                    borderRadius: '6px',
-                    borderLeft: '3px solid #f59e0b',
-                  }}
-                />
+              <div className="auth-kanban-column">
+                <div className="auth-kanban-col-header">
+                  <span>Pending</span>
+                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>2</span>
+                </div>
+                <div className="auth-kanban-task pending">
+                  <div className="auth-kanban-bar" />
+                </div>
+                <div className="auth-kanban-task pending">
+                  <div className="auth-kanban-bar" style={{ width: '50%' }} />
+                </div>
               </div>
 
               {/* Column 2: In Progress */}
-              <div
-                style={{
-                  backgroundColor: 'rgba(255, 255, 255, 0.92)',
-                  borderRadius: '10px',
-                  padding: '12px',
-                  color: '#1e293b',
-                }}
-              >
-                <div style={{ fontSize: '12px', fontWeight: 700, marginBottom: '8px' }}>In Progress</div>
-                <div
-                  style={{
-                    height: '24px',
-                    backgroundColor: '#eff6ff',
-                    borderRadius: '6px',
-                    marginBottom: '6px',
-                    borderLeft: '3px solid #3b82f6',
-                  }}
-                />
-                <div
-                  style={{
-                    height: '24px',
-                    backgroundColor: '#eff6ff',
-                    borderRadius: '6px',
-                    borderLeft: '3px solid #3b82f6',
-                  }}
-                />
+              <div className="auth-kanban-column">
+                <div className="auth-kanban-col-header">
+                  <span>In Progress</span>
+                  <span style={{ fontSize: '11px', color: '#3b82f6' }}>2</span>
+                </div>
+                <div className="auth-kanban-task in-progress">
+                  <div className="auth-kanban-bar" style={{ width: '85%' }} />
+                </div>
+                <div className="auth-kanban-task in-progress">
+                  <div className="auth-kanban-bar" style={{ width: '60%' }} />
+                </div>
               </div>
 
               {/* Column 3: Completed */}
-              <div
-                style={{
-                  backgroundColor: 'rgba(255, 255, 255, 0.92)',
-                  borderRadius: '10px',
-                  padding: '12px',
-                  color: '#1e293b',
-                }}
-              >
-                <div style={{ fontSize: '12px', fontWeight: 700, marginBottom: '8px' }}>Completed</div>
-                <div
-                  style={{
-                    height: '24px',
-                    backgroundColor: '#ecfdf5',
-                    borderRadius: '6px',
-                    marginBottom: '6px',
-                    borderLeft: '3px solid #10b981',
-                  }}
-                />
-                <div
-                  style={{
-                    height: '24px',
-                    backgroundColor: '#ecfdf5',
-                    borderRadius: '6px',
-                    borderLeft: '3px solid #10b981',
-                  }}
-                />
+              <div className="auth-kanban-column">
+                <div className="auth-kanban-col-header">
+                  <span>Completed</span>
+                  <span style={{ fontSize: '11px', color: '#10b981' }}>2</span>
+                </div>
+                <div className="auth-kanban-task completed">
+                  <div className="auth-kanban-bar" style={{ width: '100%' }} />
+                </div>
+                <div className="auth-kanban-task completed">
+                  <div className="auth-kanban-bar" style={{ width: '75%' }} />
+                </div>
               </div>
             </div>
           </div>
         </div>
 
         {/* Feature Highlights Footer */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '36px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: 600 }}>
-            <Zap size={18} />
+        <div className="auth-hero-footer">
+          <div className="auth-hero-footer-item">
+            <Zap size={18} color="#fbbf24" />
             <span>Organize Tasks</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: 600 }}>
-            <Users size={18} />
+          <div className="auth-hero-footer-item">
+            <Users size={18} color="#60a5fa" />
             <span>Collaborate</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: 600 }}>
-            <BarChart3 size={18} />
+          <div className="auth-hero-footer-item">
+            <BarChart3 size={18} color="#34d399" />
             <span>Track Progress</span>
           </div>
         </div>
       </div>
 
-      {/* Right Login Form Panel */}
-      <div
-        style={{
-          flex: '1',
-          backgroundColor: '#ffffff',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '40px',
-        }}
-      >
-        <div style={{ width: '100%', maxWidth: '420px' }}>
-          {/* Top Logo */}
-          <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-            <div
-              style={{
-                width: '48px',
-                height: '48px',
-                borderRadius: '12px',
-                backgroundColor: '#4f46e5',
-                color: '#ffffff',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginBottom: '16px',
-              }}
-            >
-              <Check size={28} strokeWidth={3} />
+      {/* Right Login Form Panel (Mobile Friendly & Responsive) */}
+      <div className="auth-form-panel">
+        <div className="auth-card">
+          {/* Top Brand & Header */}
+          <div className="auth-card-header">
+            <div className="auth-card-logo-wrap">
+              <div className="auth-card-logo">
+                <Check size={26} strokeWidth={3} />
+              </div>
+              <span className="auth-card-brand-title">TaskFlow</span>
             </div>
-            <h2 style={{ fontSize: '28px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.3px' }}>
-              Welcome Back
-            </h2>
-            <p style={{ fontSize: '14px', color: '#64748b', marginTop: '6px' }}>
+            <h2 className="auth-card-title">Welcome Back</h2>
+            <p className="auth-card-subtitle">
               Sign in to your account to continue
             </p>
           </div>
 
+          {/* Error Alert */}
           {error && (
-            <div
-              style={{
-                padding: '12px 14px',
-                backgroundColor: '#fef2f2',
-                border: '1px solid #fecaca',
-                borderRadius: '10px',
-                color: '#dc2626',
-                fontSize: '13px',
-                marginBottom: '20px',
-              }}
-            >
-              {error}
+            <div className="auth-error-alert" role="alert">
+              <AlertCircle size={18} style={{ flexShrink: 0, marginTop: '1px' }} />
+              <span>{error}</span>
             </div>
           )}
 
-          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+          {/* Login Form */}
+          <form onSubmit={handleLogin} className="auth-form" noValidate>
             {/* Email Field */}
-            <div>
-              <label style={{ fontSize: '13.5px', fontWeight: 600, color: '#1e293b', marginBottom: '6px', display: 'block' }}>
+            <div className="auth-field">
+              <label htmlFor="login-email" className="auth-label">
                 Email
               </label>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  border: '1.5px solid #e2e8f0',
-                  borderRadius: '10px',
-                  padding: '0 14px',
-                  backgroundColor: '#ffffff',
-                }}
-              >
-                <Mail size={18} color="#94a3b8" style={{ marginRight: '10px' }} />
+              <div className="auth-input-wrapper">
+                <span className="auth-input-icon">
+                  <Mail size={18} />
+                </span>
                 <input
+                  id="login-email"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="Enter your email"
+                  autoComplete="email"
                   required
-                  style={{
-                    flex: 1,
-                    border: 'none',
-                    outline: 'none',
-                    padding: '12px 0',
-                    fontSize: '14px',
-                    color: '#0f172a',
-                  }}
+                  className="auth-input"
                 />
               </div>
             </div>
 
             {/* Password Field */}
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <label style={{ fontSize: '13.5px', fontWeight: 600, color: '#1e293b' }}>
-                  Password
-                </label>
-                <a href="#forgot" style={{ fontSize: '12.5px', fontWeight: 600, color: '#4f46e5' }}>
+            <div className="auth-field">
+              <div className="auth-label">
+                <label htmlFor="login-password">Password</label>
+                <a href="#forgot" className="auth-forgot-link">
                   Forgot password?
                 </a>
               </div>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  border: '1.5px solid #e2e8f0',
-                  borderRadius: '10px',
-                  padding: '0 14px',
-                  backgroundColor: '#ffffff',
-                }}
-              >
-                <Lock size={18} color="#94a3b8" style={{ marginRight: '10px' }} />
+              <div className="auth-input-wrapper">
+                <span className="auth-input-icon">
+                  <Lock size={18} />
+                </span>
                 <input
+                  id="login-password"
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter your password"
+                  autoComplete="current-password"
                   required
-                  style={{
-                    flex: 1,
-                    border: 'none',
-                    outline: 'none',
-                    padding: '12px 0',
-                    fontSize: '14px',
-                    color: '#0f172a',
-                  }}
+                  className="auth-input"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  style={{ color: '#94a3b8', display: 'flex', alignItems: 'center' }}
+                  className="auth-toggle-pwd-btn"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
             </div>
 
-            {/* Remember Me Checkbox */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <input
-                type="checkbox"
-                id="remember"
-                checked={rememberMe}
-                onChange={(e) => setRememberMe(e.target.checked)}
-                style={{ width: '16px', height: '16px', accentColor: '#4f46e5', borderRadius: '4px' }}
-              />
-              <label htmlFor="remember" style={{ fontSize: '13.5px', color: '#475569', cursor: 'pointer' }}>
-                Remember me
+            {/* Remember Me Option */}
+            <div className="auth-options-row">
+              <label className="auth-checkbox-label" htmlFor="remember-me">
+                <input
+                  type="checkbox"
+                  id="remember-me"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="auth-checkbox"
+                />
+                <span>Remember me</span>
               </label>
             </div>
 
@@ -395,70 +260,49 @@ export const LoginPage: React.FC = () => {
               variant="primary"
               size="lg"
               isLoading={loading}
-              style={{ width: '100%', marginTop: '6px' }}
+              style={{ width: '100%', minHeight: '46px', marginTop: '4px' }}
             >
               Sign In
             </Button>
           </form>
 
           {/* Quick Demo Switcher Pills */}
-          <div
-            style={{
-              marginTop: '16px',
-              padding: '12px',
-              backgroundColor: '#f8fafc',
-              borderRadius: '10px',
-              border: '1px solid #e2e8f0',
-              textAlign: 'center',
-            }}
-          >
-            <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px', fontWeight: 600 }}>
-              Quick Demo Access
-            </div>
-            <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-              <Button size="sm" variant="secondary" onClick={() => loginAs('admin')}>
-                Login as Admin
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => loginAs('user')}>
-                Login as User
-              </Button>
+          <div className="auth-demo-card">
+            <div className="auth-demo-label">Quick Demo Access</div>
+            <div className="auth-demo-actions">
+              <button
+                type="button"
+                className="auth-demo-btn admin"
+                onClick={() => loginAs('admin')}
+              >
+                <ShieldCheck size={15} />
+                <span>Login as Admin</span>
+              </button>
+              <button
+                type="button"
+                className="auth-demo-btn user"
+                onClick={() => loginAs('user')}
+              >
+                <UserCheck size={15} />
+                <span>Login as User</span>
+              </button>
             </div>
           </div>
 
-          {/* Google Divider */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              margin: '22px 0',
-              color: '#94a3b8',
-              fontSize: '13px',
-            }}
-          >
-            <div style={{ flex: 1, height: '1px', backgroundColor: '#e2e8f0' }} />
-            <span style={{ padding: '0 14px' }}>or</span>
-            <div style={{ flex: 1, height: '1px', backgroundColor: '#e2e8f0' }} />
+          {/* Social Divider */}
+          <div className="auth-divider">
+            <div className="auth-divider-line" />
+            <span className="auth-divider-text">or</span>
+            <div className="auth-divider-line" />
           </div>
 
           {/* Continue with Google */}
           <button
+            type="button"
             onClick={() => handleLogin()}
-            style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '10px',
-              padding: '11px',
-              borderRadius: '10px',
-              border: '1.5px solid #e2e8f0',
-              backgroundColor: '#ffffff',
-              fontSize: '14px',
-              fontWeight: 600,
-              color: '#334155',
-            }}
+            className="auth-google-btn"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24">
+            <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
               <path
                 fill="#4285F4"
                 d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -476,13 +320,13 @@ export const LoginPage: React.FC = () => {
                 d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
               />
             </svg>
-            Continue with Google
+            <span>Continue with Google</span>
           </button>
 
-          {/* Footer */}
-          <div style={{ textAlign: 'center', marginTop: '28px', fontSize: '13px', color: '#64748b' }}>
-            Don't have an account?{' '}
-            <Link to="/register" style={{ color: '#4f46e5', fontWeight: 700, textDecoration: 'none' }}>
+          {/* Footer Navigation */}
+          <div className="auth-card-footer">
+            Don't have an account?
+            <Link to="/register" className="auth-card-footer-link">
               Create an account
             </Link>
           </div>

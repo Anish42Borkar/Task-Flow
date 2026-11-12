@@ -9,14 +9,25 @@ dotenv.config();
 async function seed() {
   console.log("🌱 Starting TaskFlow database seeding...");
 
-  const pool = new Pool({
-    host: process.env.DB_HOST || "127.0.0.1",
-    port: Number(process.env.DB_PORT) || 5432,
-    user: process.env.DB_USER || "postgres",
-    password: process.env.DB_PASSWORD || "root",
-    database: process.env.DB_NAME || "taskflow",
-    ssl: process.env.DB_SSL === "true" ? { rejectUnauthorized: false } : false,
-  });
+  const databaseUrl = process.env.DATABASE_URL;
+  const dbSsl =
+    process.env.DB_SSL === "true" ||
+    (Boolean(databaseUrl) &&
+      (databaseUrl!.includes("render.com") || databaseUrl!.includes("sslmode=require")));
+
+  const pool = databaseUrl
+    ? new Pool({
+        connectionString: databaseUrl,
+        ssl: dbSsl ? { rejectUnauthorized: false } : false,
+      })
+    : new Pool({
+        host: process.env.DB_HOST || "127.0.0.1",
+        port: Number(process.env.DB_PORT) || 5432,
+        user: process.env.DB_USER || "postgres",
+        password: process.env.DB_PASSWORD || "root",
+        database: process.env.DB_NAME || "taskflow",
+        ssl: dbSsl ? { rejectUnauthorized: false } : false,
+      });
 
   const db = drizzle(pool, { schema });
 

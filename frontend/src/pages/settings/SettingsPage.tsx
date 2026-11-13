@@ -17,7 +17,9 @@ import { useNotificationStore } from "../../stores/notificationStore";
 import { api } from "../../services/api";
 
 export const SettingsPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<"general" | "security" | "about">("general");
+  const [activeTab, setActiveTab] = useState<"general" | "security" | "about">(
+    "general",
+  );
 
   const {
     appName,
@@ -92,17 +94,29 @@ export const SettingsPage: React.FC = () => {
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentPassword || !newPassword || !confirmPassword) {
-      addToast("Validation Error", "Please fill in all password fields", "error");
+      addToast(
+        "Validation Error",
+        "Please fill in all password fields",
+        "error",
+      );
       return;
     }
 
     if (newPassword.length < 8) {
-      addToast("Validation Error", "New password must be at least 8 characters", "error");
+      addToast(
+        "Validation Error",
+        "New password must be at least 8 characters",
+        "error",
+      );
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      addToast("Validation Error", "New password and confirmation do not match", "error");
+      addToast(
+        "Validation Error",
+        "New password and confirmation do not match",
+        "error",
+      );
       return;
     }
 
@@ -175,7 +189,7 @@ export const SettingsPage: React.FC = () => {
           General
         </button>
 
-        <button
+        {/* <button
           onClick={() => setActiveTab("security")}
           style={{
             display: "flex",
@@ -194,7 +208,7 @@ export const SettingsPage: React.FC = () => {
         >
           <Shield size={16} />
           Security
-        </button>
+        </button> */}
 
         <button
           onClick={() => setActiveTab("about")}
@@ -225,7 +239,15 @@ export const SettingsPage: React.FC = () => {
           subtitle="Configure basic application settings."
         >
           {isLoading ? (
-            <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "30px 0", color: "#64748b" }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                padding: "30px 0",
+                color: "#64748b",
+              }}
+            >
               <Loader2 className="animate-spin" size={20} />
               <span>Loading system preferences...</span>
             </div>
@@ -267,8 +289,16 @@ export const SettingsPage: React.FC = () => {
                     boxSizing: "border-box",
                   }}
                 />
-                <span style={{ fontSize: "12px", color: "#64748b", marginTop: "4px", display: "block" }}>
-                  This name appears in the browser title, top header, and navigation sidebar.
+                <span
+                  style={{
+                    fontSize: "12px",
+                    color: "#64748b",
+                    marginTop: "4px",
+                    display: "block",
+                  }}
+                >
+                  This name appears in the browser title, top header, and
+                  navigation sidebar.
                 </span>
               </div>
 
@@ -326,13 +356,27 @@ export const SettingsPage: React.FC = () => {
                     backgroundColor: "#ffffff",
                   }}
                 >
-                  <option value="(GMT+05:30) India Standard Time">(GMT+05:30) India Standard Time (IST)</option>
-                  <option value="(GMT+00:00) UTC">(GMT+00:00) UTC / Greenwich Mean Time</option>
-                  <option value="(GMT-05:00) Eastern Time (US & Canada)">(GMT-05:00) Eastern Time (US & Canada)</option>
-                  <option value="(GMT-08:00) Pacific Time (US & Canada)">(GMT-08:00) Pacific Time (US & Canada)</option>
-                  <option value="(GMT+01:00) Central European Time">(GMT+01:00) Central European Time (CET)</option>
-                  <option value="(GMT+08:00) Singapore Standard Time">(GMT+08:00) Singapore / China Standard Time</option>
-                  <option value="(GMT+09:00) Japan Standard Time">(GMT+09:00) Japan Standard Time (JST)</option>
+                  <option value="(GMT+05:30) India Standard Time">
+                    (GMT+05:30) India Standard Time (IST)
+                  </option>
+                  <option value="(GMT+00:00) UTC">
+                    (GMT+00:00) UTC / Greenwich Mean Time
+                  </option>
+                  <option value="(GMT-05:00) Eastern Time (US & Canada)">
+                    (GMT-05:00) Eastern Time (US & Canada)
+                  </option>
+                  <option value="(GMT-08:00) Pacific Time (US & Canada)">
+                    (GMT-08:00) Pacific Time (US & Canada)
+                  </option>
+                  <option value="(GMT+01:00) Central European Time">
+                    (GMT+01:00) Central European Time (CET)
+                  </option>
+                  <option value="(GMT+08:00) Singapore Standard Time">
+                    (GMT+08:00) Singapore / China Standard Time
+                  </option>
+                  <option value="(GMT+09:00) Japan Standard Time">
+                    (GMT+09:00) Japan Standard Time (JST)
+                  </option>
                 </select>
               </div>
 
@@ -360,10 +404,18 @@ export const SettingsPage: React.FC = () => {
                     backgroundColor: "#ffffff",
                   }}
                 >
-                  <option value="DD MMM, YYYY (e.g. 28 Oct, 2026)">DD MMM, YYYY (e.g. 28 Oct, 2026)</option>
-                  <option value="YYYY-MM-DD">YYYY-MM-DD (e.g. 2026-10-28)</option>
-                  <option value="MM/DD/YYYY">MM/DD/YYYY (e.g. 10/28/2026)</option>
-                  <option value="DD/MM/YYYY">DD/MM/YYYY (e.g. 28/10/2026)</option>
+                  <option value="DD MMM, YYYY (e.g. 28 Oct, 2026)">
+                    DD MMM, YYYY (e.g. 28 Oct, 2026)
+                  </option>
+                  <option value="YYYY-MM-DD">
+                    YYYY-MM-DD (e.g. 2026-10-28)
+                  </option>
+                  <option value="MM/DD/YYYY">
+                    MM/DD/YYYY (e.g. 10/28/2026)
+                  </option>
+                  <option value="DD/MM/YYYY">
+                    DD/MM/YYYY (e.g. 28/10/2026)
+                  </option>
                 </select>
               </div>
 
@@ -375,12 +427,26 @@ export const SettingsPage: React.FC = () => {
                   marginTop: "12px",
                 }}
               >
-                <Button variant="outline" onClick={handleCancel} disabled={isSaving}>
+                <Button
+                  variant="outline"
+                  onClick={handleCancel}
+                  disabled={isSaving}
+                >
                   Cancel
                 </Button>
-                <Button variant="primary" onClick={handleSave} disabled={isSaving}>
+                <Button
+                  variant="primary"
+                  onClick={handleSave}
+                  disabled={isSaving}
+                >
                   {isSaving ? (
-                    <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                      }}
+                    >
                       <Loader2 className="animate-spin" size={16} />
                       Saving...
                     </span>
@@ -509,11 +575,15 @@ export const SettingsPage: React.FC = () => {
                     addToast(
                       "Security Updated",
                       `Two-factor authentication has been ${val ? "enabled" : "disabled"}`,
-                      "success"
+                      "success",
                     );
                   } catch (err: any) {
                     setFormTwoFactor(!val);
-                    addToast("Error", err.message || "Failed to update 2FA setting", "error");
+                    addToast(
+                      "Error",
+                      err.message || "Failed to update 2FA setting",
+                      "error",
+                    );
                   }
                 }}
                 style={{
@@ -590,8 +660,8 @@ export const SettingsPage: React.FC = () => {
                 style={{ fontSize: "14px", color: "#475569", lineHeight: 1.6 }}
               >
                 A high-performance enterprise task and project management suite
-                built with real-time WebSocket updates, granular RBAC permissions,
-                and persistent workflow automation.
+                built with real-time WebSocket updates, granular RBAC
+                permissions, and persistent workflow automation.
               </p>
             </div>
 
@@ -667,7 +737,9 @@ export const SettingsPage: React.FC = () => {
         subtitle="Ensure your account stays secure with a strong password."
       >
         <form onSubmit={handleChangePassword}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          <div
+            style={{ display: "flex", flexDirection: "column", gap: "16px" }}
+          >
             <Input
               label="Current Password"
               type="password"
@@ -715,7 +787,13 @@ export const SettingsPage: React.FC = () => {
                 disabled={isChangingPassword}
               >
                 {isChangingPassword ? (
-                  <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                    }}
+                  >
                     <Loader2 className="animate-spin" size={16} />
                     Updating...
                   </span>

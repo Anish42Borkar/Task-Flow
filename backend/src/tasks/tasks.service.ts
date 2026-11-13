@@ -299,8 +299,8 @@ export class TasksService {
         if (aUser.id !== actor.id) {
           await this.notificationsService.createNotification(
             aUser.id,
-            'Task assigned to you',
-            `You have been assigned a new task "${task.title}" by ${actor.fullName}.`,
+            'Task Assigned',
+            `You have been assigned to task "${task.title}" by ${actor.fullName}.`,
             'task_assigned',
             task.id,
           );
@@ -346,8 +346,17 @@ export class TasksService {
       .where(eq(schema.tasks.id, id))
       .returning();
 
-    // Synchronize assignees if provided
+    // Query existing assignees prior to modification
+    const existingAssignees = await this.db
+      .select({ userId: schema.taskAssignees.userId })
+      .from(schema.taskAssignees)
+      .where(eq(schema.taskAssignees.taskId, id));
+    const prevAssigneeIds = existingAssignees.map((a) => a.userId);
+
+    let newlyAssignedIds: string[] = [];
     if (dto.assigneeIds) {
+      newlyAssignedIds = dto.assigneeIds.filter((uid) => !prevAssigneeIds.includes(uid));
+
       // Remove existing
       await this.db.delete(schema.taskAssignees).where(eq(schema.taskAssignees.taskId, id));
 
@@ -356,17 +365,55 @@ export class TasksService {
         await this.db.insert(schema.taskAssignees).values(rows).onConflictDoNothing();
 
         // Notify newly assigned users
-        for (const userId of dto.assigneeIds) {
+        for (const userId of newlyAssignedIds) {
           if (userId !== actor.id) {
             await this.notificationsService.createNotification(
               userId,
-              'Task assignment updated',
-              `You are assigned to task "${updatedTask.title}" by ${actor.fullName}.`,
+              'Task Assigned',
+              `You have been assigned to task "${updatedTask.title}" by ${actor.fullName}.`,
               'task_assigned',
               updatedTask.id,
             );
           }
         }
+      }
+    }
+
+    // Determine current assignee IDs after update
+    const currentAssigneeIds = dto.assigneeIds ? dto.assigneeIds : prevAssigneeIds;
+    const statusChanged = dto.status && dto.status !== existing.status;
+
+    // Notify other assignees and task creator about task update / status change
+    const otherRecipients = new Set<string>();
+    for (const uid of currentAssigneeIds) {
+      if (uid !== actor.id && !newlyAssignedIds.includes(uid)) {
+        otherRecipients.add(uid);
+      }
+    }
+    if (existing.createdBy && existing.createdBy !== actor.id && !newlyAssignedIds.includes(existing.createdBy)) {
+      otherRecipients.add(existing.createdBy);
+    }
+
+    for (const userId of otherRecipients) {
+      if (statusChanged) {
+        const notifTitle = dto.status === 'Completed' ? 'Task Completed' : 'Task Status Changed';
+        const notifMsg = `Task "${updatedTask.title}" status changed to "${dto.status}" by ${actor.fullName}.`;
+        const notifType = dto.status === 'Completed' ? 'task_completed' : 'task_updated';
+        await this.notificationsService.createNotification(
+          userId,
+          notifTitle,
+          notifMsg,
+          notifType,
+          updatedTask.id,
+        );
+      } else {
+        await this.notificationsService.createNotification(
+          userId,
+          'Task Updated',
+          `Task "${updatedTask.title}" was updated by ${actor.fullName}.`,
+          'task_updated',
+          updatedTask.id,
+        );
       }
     }
 
@@ -409,24 +456,32 @@ export class TasksService {
       actor: { id: actor.id, fullName: actor.fullName },
     });
 
-    // If marked completed, generate notification
-    if (status === 'Completed') {
-      const assignees = await this.db
-        .select({ userId: schema.taskAssignees.userId })
-        .from(schema.taskAssignees)
-        .where(eq(schema.taskAssignees.taskId, id));
+    // Notify all assignees and task creator
+    const assignees = await this.db
+      .select({ userId: schema.taskAssignees.userId })
+      .from(schema.taskAssignees)
+      .where(eq(schema.taskAssignees.taskId, id));
 
-      for (const a of assignees) {
-        if (a.userId !== actor.id) {
-          await this.notificationsService.createNotification(
-            a.userId,
-            'Task completed',
-            `"${updated.title}" has been marked as completed by ${actor.fullName}.`,
-            'task_completed',
-            updated.id,
-          );
-        }
-      }
+    const recipients = new Set<string>();
+    for (const a of assignees) {
+      if (a.userId !== actor.id) recipients.add(a.userId);
+    }
+    if (existing.createdBy && existing.createdBy !== actor.id) {
+      recipients.add(existing.createdBy);
+    }
+
+    const notifTitle = status === 'Completed' ? 'Task Completed' : 'Task Status Changed';
+    const notifMsg = `Task "${existing.title}" status changed to "${status}" by ${actor.fullName}.`;
+    const notifType = status === 'Completed' ? 'task_completed' : 'task_updated';
+
+    for (const userId of recipients) {
+      await this.notificationsService.createNotification(
+        userId,
+        notifTitle,
+        notifMsg,
+        notifType,
+        updated.id,
+      );
     }
 
     return updated;

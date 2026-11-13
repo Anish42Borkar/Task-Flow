@@ -169,6 +169,7 @@ export class ProjectsService {
     // Notify newly assigned members
     const actorName = actor?.fullName || 'Project Admin';
     for (const userId of assignedUserIds) {
+      if (creatorId && userId === creatorId) continue;
       try {
         const notif = await this.notificationsService.createNotification(
           userId,
@@ -275,6 +276,7 @@ export class ProjectsService {
       const userNames = assignedUsers.map((u) => u.fullName).join(', ');
 
       for (const u of assignedUsers) {
+        if (actor && actor.id && u.id === actor.id) continue;
         try {
           const notif = await this.notificationsService.createNotification(
             u.id,

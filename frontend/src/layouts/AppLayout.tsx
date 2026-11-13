@@ -17,6 +17,7 @@ import {
   CheckCheck,
   Layers,
   ArrowRight,
+  Trash2,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useNotificationStore } from '../stores/notificationStore';
@@ -32,6 +33,7 @@ export const AppLayout: React.FC = () => {
     fetchNotifications,
     markAsRead,
     markAllAsRead,
+    deleteNotification,
   } = useNotificationStore();
   const navigate = useNavigate();
   const location = useLocation();
@@ -499,18 +501,46 @@ export const AppLayout: React.FC = () => {
                               })}
                             </div>
                           </div>
-                          {!item.isRead && (
-                            <span
-                              style={{
-                                width: '7px',
-                                height: '7px',
-                                borderRadius: '50%',
-                                backgroundColor: '#4f46e5',
-                                flexShrink: 0,
-                                marginTop: '6px',
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                            {!item.isRead && (
+                              <span
+                                style={{
+                                  width: '7px',
+                                  height: '7px',
+                                  borderRadius: '50%',
+                                  backgroundColor: '#4f46e5',
+                                }}
+                              />
+                            )}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteNotification(item.id);
                               }}
-                            />
-                          )}
+                              title="Delete notification"
+                              style={{
+                                padding: '4px',
+                                borderRadius: '4px',
+                                border: 'none',
+                                background: 'transparent',
+                                color: '#94a3b8',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.color = '#ef4444';
+                                e.currentTarget.style.backgroundColor = '#fee2e2';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.color = '#94a3b8';
+                                e.currentTarget.style.backgroundColor = 'transparent';
+                              }}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
                         </div>
                       ))
                     )}

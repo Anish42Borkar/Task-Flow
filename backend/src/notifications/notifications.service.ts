@@ -87,6 +87,27 @@ export class NotificationsService {
     return { success: true, message: 'All notifications marked as read' };
   }
 
+  async remove(id: string, userId: string) {
+    await this.db
+      .delete(schema.notifications)
+      .where(
+        and(
+          eq(schema.notifications.id, id),
+          eq(schema.notifications.userId, userId),
+        ),
+      );
+
+    return { success: true, message: 'Notification deleted', id };
+  }
+
+  async clearAll(userId: string) {
+    await this.db
+      .delete(schema.notifications)
+      .where(eq(schema.notifications.userId, userId));
+
+    return { success: true, message: 'All notifications cleared' };
+  }
+
   async createNotification(
     userId: string,
     title: string,

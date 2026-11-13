@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Patch,
+  Delete,
   Param,
   UseGuards,
   ParseUUIDPipe,
@@ -20,6 +21,11 @@ export class NotificationsController {
     return this.notificationsService.findAll(userId);
   }
 
+  @Patch('read-all')
+  async markAllAsRead(@CurrentUser('id') userId: string) {
+    return this.notificationsService.markAllAsRead(userId);
+  }
+
   @Patch(':id/read')
   async markAsRead(
     @Param('id') id: string,
@@ -28,8 +34,16 @@ export class NotificationsController {
     return this.notificationsService.markAsRead(id, userId);
   }
 
-  @Patch('read-all')
-  async markAllAsRead(@CurrentUser('id') userId: string) {
-    return this.notificationsService.markAllAsRead(userId);
+  @Delete('clear-all')
+  async clearAll(@CurrentUser('id') userId: string) {
+    return this.notificationsService.clearAll(userId);
+  }
+
+  @Delete(':id')
+  async remove(
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.notificationsService.remove(id, userId);
   }
 }

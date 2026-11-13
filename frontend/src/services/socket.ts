@@ -4,17 +4,24 @@ import { useNotificationStore } from '../stores/notificationStore';
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
 
 let socket: Socket | null = null;
+let currentToken: string | null = null;
 
 export const initSocket = (token?: string): Socket => {
   const authToken = token || localStorage.getItem('taskflow_token');
 
-  if (socket) {
-    if (authToken && socket.auth && (socket.auth as any).token !== authToken) {
-      socket.disconnect();
-    } else if (socket.connected) {
-      return socket;
-    }
+  // If socket is already established with the same token, reuse it
+  if (socket && currentToken === authToken && (socket.connected || socket.active)) {
+    return socket;
   }
+
+  // If token changed or reinitializing, cleanly disconnect previous socket
+  if (socket) {
+    socket.removeAllListeners();
+    socket.disconnect();
+    socket = null;
+  }
+
+  currentToken = authToken || null;
 
   socket = io(SOCKET_URL, {
     auth: {
@@ -45,9 +52,11 @@ export const initSocket = (token?: string): Socket => {
     console.warn('[Socket] Connection error:', error.message);
   });
 
-  // Global Real-time Notification listener
+  // Global Real-time Notification listener (SINGLE source of truth for in-app notifications and popups)
   socket.on('notification:new', (notification: any) => {
     console.log('[Socket] New notification received:', notification);
+    if (!notification) return;
+
     useNotificationStore.getState().addNotification({
       id: notification.id || Math.random().toString(),
       userId: notification.userId,
@@ -60,35 +69,10 @@ export const initSocket = (token?: string): Socket => {
     });
   });
 
-  // Project assigned listener - popup message and store update
+  // Project assigned listener: notify pages to reload project list, without creating duplicate popups
   socket.on('project:assigned', (data: any) => {
     console.log('[Socket] Project assigned event received:', data);
-    const title = data.title || 'Project Assigned';
-    const message =
-      data.message ||
-      (data.projectName
-        ? `You have been assigned to project "${data.projectName}".`
-        : 'You have been assigned to a project.');
-
-    // Display instant popup toast message
-    useNotificationStore.getState().addToast(title, message, 'success');
-
-    // Add to in-app notification center
-    useNotificationStore.getState().addNotification({
-      id: data.notification?.id || Math.random().toString(),
-      userId: data.notification?.userId || 'me',
-      title,
-      message,
-      type: 'project_assigned',
-      referenceId: data.projectId,
-      isRead: false,
-      createdAt: data.notification?.createdAt || new Date().toISOString(),
-    });
-
-    // Refresh full notification count and list
     useNotificationStore.getState().fetchNotifications();
-
-    // Notify any active page components (e.g., ProjectsPage) to auto-reload project list
     window.dispatchEvent(new CustomEvent('taskflow:project_assigned', { detail: data }));
   });
 
@@ -111,8 +95,10 @@ export const getSocket = (): Socket | null => {
 
 export const disconnectSocket = () => {
   if (socket) {
+    socket.removeAllListeners();
     socket.disconnect();
     socket = null;
+    currentToken = null;
   }
 };
 

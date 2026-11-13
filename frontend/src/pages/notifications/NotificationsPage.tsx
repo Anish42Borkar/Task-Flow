@@ -10,6 +10,7 @@ import {
   CheckSquare,
   Clock,
   Loader2,
+  Trash2,
 } from "lucide-react";
 import { useNotificationStore } from "../../stores/notificationStore";
 import { Button } from "../../components/common/Button";
@@ -23,6 +24,8 @@ export const NotificationsPage: React.FC = () => {
     fetchNotifications,
     markAsRead,
     markAllAsRead,
+    deleteNotification,
+    clearAllNotifications,
   } = useNotificationStore();
 
   const [activeFilter, setActiveFilter] = useState<
@@ -119,6 +122,17 @@ export const NotificationsPage: React.FC = () => {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          {notifications.length > 0 && (
+            <Button
+              variant="outline"
+              icon={<Trash2 size={16} />}
+              onClick={() => clearAllNotifications()}
+              style={{ color: "#ef4444", borderColor: "#fecaca" }}
+            >
+              Clear all
+            </Button>
+          )}
+
           <Button
             variant="outline"
             icon={<CheckCheck size={16} />}
@@ -303,6 +317,35 @@ export const NotificationsPage: React.FC = () => {
                         minute: "2-digit",
                       })}
                     </span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteNotification(item.id);
+                      }}
+                      title="Delete notification"
+                      style={{
+                        padding: "6px",
+                        borderRadius: "6px",
+                        border: "none",
+                        backgroundColor: "transparent",
+                        color: "#94a3b8",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        transition: "all 0.15s ease",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = "#fee2e2";
+                        e.currentTarget.style.color = "#dc2626";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = "transparent";
+                        e.currentTarget.style.color = "#94a3b8";
+                      }}
+                    >
+                      <Trash2 size={15} />
+                    </button>
                     {/* {!item.isRead ? (
                       <span
                         title="Unread notification"

@@ -18,9 +18,11 @@ interface NotificationState {
   addToast: (title: string, message: string, type?: ToastMessage['type']) => void;
   removeToast: (id: string) => void;
   setNotifications: (items: NotificationItem[]) => void;
-  addNotification: (item: NotificationItem) => void;
+  addNotification: (item: NotificationItem, showToast?: boolean) => void;
   markAsRead: (id: string) => Promise<void>;
   markAllAsRead: () => Promise<void>;
+  deleteNotification: (id: string) => Promise<void>;
+  clearAllNotifications: () => Promise<void>;
   fetchNotifications: () => Promise<void>;
 }
 
@@ -62,8 +64,18 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   },
 
   addToast: (title, message, type = 'info') => {
+    const now = Date.now();
+    // Anti-duplicate protection: avoid spamming identical popups within 2 seconds
+    const isDuplicate = get().toasts.some(
+      (t) =>
+        t.title.trim().toLowerCase() === title.trim().toLowerCase() &&
+        t.message.trim().toLowerCase() === message.trim().toLowerCase() &&
+        now - t.timestamp < 2000,
+    );
+    if (isDuplicate) return;
+
     const id = Math.random().toString(36).substring(2, 9);
-    const newToast: ToastMessage = { id, title, message, type, timestamp: Date.now() };
+    const newToast: ToastMessage = { id, title, message, type, timestamp: now };
     set((state) => ({ toasts: [...state.toasts, newToast] }));
     setTimeout(() => {
       get().removeToast(id);
@@ -79,7 +91,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     set({ notifications: items, unreadCount: unread, isLoading: false });
   },
 
-  addNotification: (item) => {
+  addNotification: (item, showToast = true) => {
     set((state) => {
       // Prevent duplicate notification addition
       const exists = state.notifications.some((n) => n.id === item.id);
@@ -89,7 +101,22 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
         unreadCount: item.isRead ? state.unreadCount : state.unreadCount + 1,
       };
     });
-    get().addToast(item.title, item.message, 'info');
+
+    if (showToast) {
+      let toastType: ToastMessage['type'] = 'info';
+      if (
+        item.type === 'project_assigned' ||
+        item.type === 'task_completed' ||
+        item.type === 'success'
+      ) {
+        toastType = 'success';
+      } else if (item.type === 'error') {
+        toastType = 'error';
+      } else if (item.type === 'warning') {
+        toastType = 'warning';
+      }
+      get().addToast(item.title, item.message, toastType);
+    }
   },
 
   markAsRead: async (id) => {
@@ -113,6 +140,30 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       await api.patch('/notifications/read-all');
     } catch (err) {
       console.warn('Failed to mark all notifications read on backend:', err);
+    }
+  },
+
+  deleteNotification: async (id: string) => {
+    const target = get().notifications.find((n) => n.id === id);
+    set((state) => ({
+      notifications: state.notifications.filter((n) => n.id !== id),
+      unreadCount:
+        target && !target.isRead ? Math.max(0, state.unreadCount - 1) : state.unreadCount,
+    }));
+    try {
+      await api.delete(`/notifications/${id}`);
+    } catch (err) {
+      console.warn('Failed to delete notification on backend:', err);
+    }
+  },
+
+  clearAllNotifications: async () => {
+    set({ notifications: [], unreadCount: 0 });
+    try {
+      await api.delete('/notifications/clear-all');
+      get().addToast('Cleared', 'All notifications have been removed', 'info');
+    } catch (err) {
+      console.warn('Failed to clear notifications on backend:', err);
     }
   },
 }));

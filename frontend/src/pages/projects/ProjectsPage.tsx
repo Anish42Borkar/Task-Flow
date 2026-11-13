@@ -201,18 +201,6 @@ export const ProjectsPage: React.FC = () => {
 
       if (toAdd.length > 0) {
         await api.post(`/projects/${editingProject.id}/members`, { userIds: toAdd });
-        const assignedUsers = allUsers.filter((u) => toAdd.includes(u.id));
-        const names = assignedUsers.map((u) => u.fullName).join(', ');
-        addNotification({
-          id: Math.random().toString(),
-          userId: user?.id || 'me',
-          title: 'Member Assigned to Project',
-          message: `Assigned ${names || 'team member'} to project "${editingProject.name}".`,
-          type: 'project_assigned',
-          referenceId: editingProject.id,
-          isRead: false,
-          createdAt: new Date().toISOString(),
-        });
       }
       if (toRemove.length > 0) {
         for (const uId of toRemove) {
@@ -253,21 +241,6 @@ export const ProjectsPage: React.FC = () => {
         await api.post(`/projects/${activeProjectForMembers.id}/members`, {
           userIds: toAdd,
         });
-
-        const assignedUsers = allUsers.filter((u) => toAdd.includes(u.id));
-        const names = assignedUsers.map((u) => u.fullName).join(', ');
-
-        // Trigger real-time notification with toast alert
-        addNotification({
-          id: Math.random().toString(),
-          userId: user?.id || 'me',
-          title: 'Member Assigned to Project',
-          message: `Assigned ${names || 'team member'} to project "${activeProjectForMembers.name}".`,
-          type: 'project_assigned',
-          referenceId: activeProjectForMembers.id,
-          isRead: false,
-          createdAt: new Date().toISOString(),
-        });
       }
 
       // Remove unassigned members
@@ -275,20 +248,6 @@ export const ProjectsPage: React.FC = () => {
         for (const uId of toRemove) {
           await api.delete(`/projects/${activeProjectForMembers.id}/members/${uId}`);
         }
-
-        const removedUsers = allUsers.filter((u) => toRemove.includes(u.id));
-        const names = removedUsers.map((u) => u.fullName).join(', ');
-
-        addNotification({
-          id: Math.random().toString(),
-          userId: user?.id || 'me',
-          title: 'Member Removed from Project',
-          message: `Removed ${names || 'team member'} from project "${activeProjectForMembers.name}".`,
-          type: 'project_updated',
-          referenceId: activeProjectForMembers.id,
-          isRead: false,
-          createdAt: new Date().toISOString(),
-        });
       }
 
       if (toAdd.length === 0 && toRemove.length === 0) {

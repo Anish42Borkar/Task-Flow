@@ -199,20 +199,18 @@ export const TasksPage: React.FC = () => {
       );
     };
 
-    const handleTaskUpdated = (updated: any) => {
-      setTasks((prev) =>
-        prev.map((t) => (t.id === updated.id ? { ...t, ...updated } : t)),
-      );
+    const handleTaskUpdated = (payload: any) => {
+      const taskData = payload?.task || payload;
+      if (taskData?.id) {
+        setTasks((prev) =>
+          prev.map((t) => (t.id === taskData.id ? { ...t, ...taskData } : t)),
+        );
+      }
     };
 
     const handleStatusChanged = ({ taskId, status, actor }: any) => {
       setTasks((prev) =>
         prev.map((t) => (t.id === taskId ? { ...t, status } : t)),
-      );
-      addToast(
-        "Status Changed",
-        `Task status updated to "${status}" by ${actor?.fullName || "team member"}`,
-        "info",
       );
     };
 

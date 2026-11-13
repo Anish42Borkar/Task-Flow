@@ -106,16 +106,35 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // Superuser admin has universal access
     if (user.role === 'admin') return true;
 
-    // Viewer role is strictly read-only
-    if (user.role === 'viewer') {
-      if (action !== 'canView') return false;
-      return module === 'projects' || module === 'tasks' || module === 'notifications';
+    // Check dynamic permissions matrix loaded from database
+    const perm = permissions?.find((p) => p.module === module);
+    if (perm !== undefined) {
+      return Boolean(perm[action]);
     }
 
-    const perm = permissions.find((p) => p.module === module);
-    if (!perm) return false;
+    // Fallback defaults if permissions have not loaded yet:
+    if (user.role === 'viewer') {
+      return action === 'canView' && (module === 'projects' || module === 'tasks' || module === 'notifications');
+    }
 
-    return Boolean(perm[action]);
+    if (user.role === 'user' || user.role === 'member') {
+      if (module === 'tasks') {
+        return action === 'canView' || action === 'canCreate' || action === 'canEdit';
+      }
+      if (module === 'projects' || module === 'notifications') {
+        return action === 'canView';
+      }
+      return false;
+    }
+
+    if (user.role === 'project_manager') {
+      if (module === 'projects' || module === 'tasks') {
+        return action === 'canView' || action === 'canCreate' || action === 'canEdit';
+      }
+      return action === 'canView';
+    }
+
+    return false;
   },
 
   logout: () => {

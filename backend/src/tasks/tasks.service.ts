@@ -34,12 +34,6 @@ export class TasksService {
       return;
     }
 
-    if (actor.role === 'viewer' && action !== 'canView') {
-      throw new ForbiddenException(
-        'Access denied. Viewers have read-only permissions and cannot modify tasks.',
-      );
-    }
-
     const [perm] = await this.db
       .select({
         canView: schema.rolePermissions.canView,
@@ -76,7 +70,15 @@ export class TasksService {
         .limit(1);
 
       if (!membership) {
-        throw new ForbiddenException('Access denied. You are not a member of this project.');
+        const [project] = await this.db
+          .select({ createdBy: schema.projects.createdBy })
+          .from(schema.projects)
+          .where(eq(schema.projects.id, projectId))
+          .limit(1);
+
+        if (project?.createdBy !== actor.id) {
+          throw new ForbiddenException('Access denied. You are not a member of this project.');
+        }
       }
     }
   }
@@ -107,7 +109,18 @@ export class TasksService {
         .select({ projectId: schema.projectMembers.projectId })
         .from(schema.projectMembers)
         .where(eq(schema.projectMembers.userId, actor.id));
-      projectIds = memberships.map((m) => m.projectId);
+
+      const createdProjects = await this.db
+        .select({ id: schema.projects.id })
+        .from(schema.projects)
+        .where(eq(schema.projects.createdBy, actor.id));
+
+      projectIds = Array.from(
+        new Set([
+          ...memberships.map((m) => m.projectId),
+          ...createdProjects.map((p) => p.id),
+        ]),
+      );
     }
 
     if (projectIds.length === 0) {

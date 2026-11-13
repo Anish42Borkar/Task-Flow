@@ -30,13 +30,24 @@ export class ProjectsService {
         .from(schema.projects)
         .orderBy(desc(schema.projects.createdAt));
     } else {
-      // Find project IDs where user is member
+      // Find project IDs where user is member OR user is creator
       const memberships = await this.db
         .select({ projectId: schema.projectMembers.projectId })
         .from(schema.projectMembers)
         .where(eq(schema.projectMembers.userId, userId));
 
-      const projectIds = memberships.map((m) => m.projectId);
+      const createdProjects = await this.db
+        .select({ id: schema.projects.id })
+        .from(schema.projects)
+        .where(eq(schema.projects.createdBy, userId));
+
+      const projectIds = Array.from(
+        new Set([
+          ...memberships.map((m) => m.projectId),
+          ...createdProjects.map((p) => p.id),
+        ]),
+      );
+
       if (projectIds.length === 0) {
         return [];
       }
@@ -95,11 +106,25 @@ export class ProjectsService {
         .select({ id: schema.projectMembers.id })
         .from(schema.projectMembers)
         .where(
-          sql`${schema.projectMembers.projectId} = ${id} AND ${schema.projectMembers.userId} = ${userId}`,
+          and(
+            eq(schema.projectMembers.projectId, id),
+            eq(schema.projectMembers.userId, userId),
+          ),
         )
         .limit(1);
 
-      if (!isMember) {
+      const [isCreator] = await this.db
+        .select({ id: schema.projects.id })
+        .from(schema.projects)
+        .where(
+          and(
+            eq(schema.projects.id, id),
+            eq(schema.projects.createdBy, userId),
+          ),
+        )
+        .limit(1);
+
+      if (!isMember && !isCreator) {
         throw new ForbiddenException('You do not have access to this project');
       }
     }

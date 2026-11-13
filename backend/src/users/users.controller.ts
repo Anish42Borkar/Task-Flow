@@ -18,15 +18,14 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 
 @Controller('users')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get()
-  @Roles('admin')
   async findAll(
     @Query('page') page = '1',
-    @Query('limit') limit = '20',
+    @Query('limit') limit = '50',
     @Query('search') search?: string,
     @Query('role') roleId?: string,
     @Query('active') active?: string,
@@ -36,18 +35,19 @@ export class UsersController {
   }
 
   @Get(':id')
-  @Roles('admin')
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.usersService.findOne(id);
   }
 
   @Post()
+  @UseGuards(RolesGuard)
   @Roles('admin')
   async create(@Body() createUserDto: CreateUserDto) {
     return this.usersService.create(createUserDto);
   }
 
   @Put(':id')
+  @UseGuards(RolesGuard)
   @Roles('admin')
   async update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -57,6 +57,7 @@ export class UsersController {
   }
 
   @Delete(':id')
+  @UseGuards(RolesGuard)
   @Roles('admin')
   async remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.usersService.remove(id);

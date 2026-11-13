@@ -45,15 +45,8 @@ export class PermissionsGuard implements CanActivate {
       return true;
     }
 
-    // Explicit check: Viewers are strictly read-only and cannot mutate any resource
-    if (user.role === 'viewer' && required.action !== 'canView') {
-      throw new ForbiddenException(
-        `Access denied. Users with the Viewer role cannot modify or create ${required.module}.`,
-      );
-    }
-
     // Check dynamic granular role permission in database
-    const [perm] = await this.db
+    let [perm] = await this.db
       .select({
         canView: schema.rolePermissions.canView,
         canCreate: schema.rolePermissions.canCreate,
@@ -70,12 +63,59 @@ export class PermissionsGuard implements CanActivate {
       .limit(1);
 
     if (!perm) {
-      throw new ForbiddenException(
-        `Access denied. No permissions configured for role "${user.role}" in module "${required.module}".`,
-      );
+      // Auto-ensure default permissions for this role in database if missing
+      const modules = ['projects', 'tasks', 'user_management', 'permissions', 'settings', 'notifications'];
+      const defaultEntries = modules.map((mod) => {
+        let canView = false;
+        let canCreate = false;
+        let canEdit = false;
+        let canDelete = false;
+
+        if (user.role === 'project_manager') {
+          canView = true;
+          canCreate = mod === 'projects' || mod === 'tasks';
+          canEdit = mod === 'projects' || mod === 'tasks';
+        } else if (user.role === 'user' || user.role === 'member') {
+          canView = mod === 'projects' || mod === 'tasks' || mod === 'notifications';
+          canCreate = mod === 'tasks';
+          canEdit = mod === 'tasks';
+        } else if (user.role === 'viewer') {
+          canView = mod === 'projects' || mod === 'tasks' || mod === 'notifications';
+        }
+
+        return {
+          id: `${user.role}_${mod}`,
+          roleId: user.role,
+          module: mod,
+          canView,
+          canCreate,
+          canEdit,
+          canDelete,
+        };
+      });
+
+      await this.db.insert(schema.rolePermissions).values(defaultEntries).onConflictDoNothing();
+
+      const [refetched] = await this.db
+        .select({
+          canView: schema.rolePermissions.canView,
+          canCreate: schema.rolePermissions.canCreate,
+          canEdit: schema.rolePermissions.canEdit,
+          canDelete: schema.rolePermissions.canDelete,
+        })
+        .from(schema.rolePermissions)
+        .where(
+          and(
+            eq(schema.rolePermissions.roleId, user.role),
+            eq(schema.rolePermissions.module, required.module),
+          ),
+        )
+        .limit(1);
+
+      perm = refetched;
     }
 
-    const isAllowed = Boolean(perm[required.action]);
+    const isAllowed = perm ? Boolean(perm[required.action]) : false;
     if (!isAllowed) {
       const readableAction = required.action
         .replace(/^can([A-Z])/, (_, c) => c.toLowerCase());

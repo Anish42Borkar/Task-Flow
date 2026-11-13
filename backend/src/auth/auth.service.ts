@@ -30,6 +30,75 @@ export class AuthService {
     return crypto.createHash('sha256').update(token).digest('hex');
   }
 
+  async ensureRolePermissions(roleId: string) {
+    const modules = ['projects', 'tasks', 'user_management', 'permissions', 'settings', 'notifications'];
+    let permissions = await this.db
+      .select({
+        module: schema.rolePermissions.module,
+        canView: schema.rolePermissions.canView,
+        canCreate: schema.rolePermissions.canCreate,
+        canEdit: schema.rolePermissions.canEdit,
+        canDelete: schema.rolePermissions.canDelete,
+      })
+      .from(schema.rolePermissions)
+      .where(eq(schema.rolePermissions.roleId, roleId));
+
+    if (permissions.length < modules.length) {
+      const existingModules = new Set(permissions.map((p) => p.module));
+      const missing = modules.filter((m) => !existingModules.has(m));
+
+      const newEntries: schema.NewRolePermission[] = missing.map((mod) => {
+        let canView = false;
+        let canCreate = false;
+        let canEdit = false;
+        let canDelete = false;
+
+        if (roleId === 'admin') {
+          canView = true;
+          canCreate = true;
+          canEdit = true;
+          canDelete = true;
+        } else if (roleId === 'project_manager') {
+          canView = true;
+          canCreate = mod === 'projects' || mod === 'tasks';
+          canEdit = mod === 'projects' || mod === 'tasks';
+        } else if (roleId === 'user' || roleId === 'member') {
+          canView = mod === 'projects' || mod === 'tasks' || mod === 'notifications';
+          canCreate = mod === 'tasks';
+          canEdit = mod === 'tasks';
+        } else if (roleId === 'viewer') {
+          canView = mod === 'projects' || mod === 'tasks' || mod === 'notifications';
+        }
+
+        return {
+          id: `${roleId}_${mod}`,
+          roleId,
+          module: mod,
+          canView,
+          canCreate,
+          canEdit,
+          canDelete,
+        };
+      });
+
+      if (newEntries.length > 0) {
+        await this.db.insert(schema.rolePermissions).values(newEntries).onConflictDoNothing();
+        permissions = await this.db
+          .select({
+            module: schema.rolePermissions.module,
+            canView: schema.rolePermissions.canView,
+            canCreate: schema.rolePermissions.canCreate,
+            canEdit: schema.rolePermissions.canEdit,
+            canDelete: schema.rolePermissions.canDelete,
+          })
+          .from(schema.rolePermissions)
+          .where(eq(schema.rolePermissions.roleId, roleId));
+      }
+    }
+
+    return permissions;
+  }
+
   private async generateTokens(
     user: { id: string; email: string; roleId?: string; role?: string },
     userAgent?: string,
@@ -113,16 +182,7 @@ export class AuthService {
 
     const tokens = await this.generateTokens(newUser, userAgent);
 
-    const permissions = await this.db
-      .select({
-        module: schema.rolePermissions.module,
-        canView: schema.rolePermissions.canView,
-        canCreate: schema.rolePermissions.canCreate,
-        canEdit: schema.rolePermissions.canEdit,
-        canDelete: schema.rolePermissions.canDelete,
-      })
-      .from(schema.rolePermissions)
-      .where(eq(schema.rolePermissions.roleId, newUser.role));
+    const permissions = await this.ensureRolePermissions(newUser.role);
 
     return {
       ...tokens,
@@ -159,16 +219,7 @@ export class AuthService {
 
     const tokens = await this.generateTokens(user, userAgent);
 
-    const permissions = await this.db
-      .select({
-        module: schema.rolePermissions.module,
-        canView: schema.rolePermissions.canView,
-        canCreate: schema.rolePermissions.canCreate,
-        canEdit: schema.rolePermissions.canEdit,
-        canDelete: schema.rolePermissions.canDelete,
-      })
-      .from(schema.rolePermissions)
-      .where(eq(schema.rolePermissions.roleId, user.roleId));
+    const permissions = await this.ensureRolePermissions(user.roleId);
 
     return {
       ...tokens,
@@ -302,10 +353,7 @@ export class AuthService {
     }
 
     // Fetch user permissions for their role
-    const permissions = await this.db
-      .select()
-      .from(schema.rolePermissions)
-      .where(eq(schema.rolePermissions.roleId, user.role));
+    const permissions = await this.ensureRolePermissions(user.role);
 
     return {
       user: {

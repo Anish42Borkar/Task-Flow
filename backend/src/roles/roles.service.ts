@@ -178,10 +178,19 @@ export class RolesService {
         let canEdit = false;
         let canDelete = false;
 
-        if (roleId === 'project_manager') {
+        if (roleId === 'admin') {
+          canView = true;
+          canCreate = true;
+          canEdit = true;
+          canDelete = true;
+        } else if (roleId === 'project_manager') {
           canView = true;
           canCreate = mod === 'projects' || mod === 'tasks';
           canEdit = mod === 'projects' || mod === 'tasks';
+        } else if (roleId === 'user' || roleId === 'member') {
+          canView = mod === 'projects' || mod === 'tasks' || mod === 'notifications';
+          canCreate = mod === 'tasks';
+          canEdit = mod === 'tasks';
         } else if (roleId === 'viewer') {
           canView = mod === 'projects' || mod === 'tasks' || mod === 'notifications';
         }

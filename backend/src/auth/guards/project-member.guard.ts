@@ -71,7 +71,7 @@ export class ProjectMemberGuard implements CanActivate {
       return true;
     }
 
-    // Check project membership in database
+    // Check project membership or creator in database
     const [membership] = await this.db
       .select({ id: schema.projectMembers.id })
       .from(schema.projectMembers)
@@ -83,10 +83,20 @@ export class ProjectMemberGuard implements CanActivate {
       )
       .limit(1);
 
-    if (!membership) {
-      throw new ForbiddenException('Access denied. You are not a member of this project.');
+    if (membership) {
+      return true;
     }
 
-    return true;
+    const [project] = await this.db
+      .select({ createdBy: schema.projects.createdBy })
+      .from(schema.projects)
+      .where(eq(schema.projects.id, projectId))
+      .limit(1);
+
+    if (project?.createdBy === user.id) {
+      return true;
+    }
+
+    throw new ForbiddenException('Access denied. You are not a member of this project.');
   }
 }

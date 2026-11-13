@@ -43,14 +43,13 @@ interface LiveProject {
 }
 
 export const TasksPage: React.FC = () => {
-  const { user, hasPermission } = useAuthStore();
+  const { user, hasPermission, fetchProfile } = useAuthStore();
   const { addToast } = useNotificationStore();
   const isAdmin = user?.role === "admin";
-  const isViewer = user?.role === "viewer";
   const canViewTasks = isAdmin || hasPermission("tasks", "canView");
-  const canCreateTasks = !isViewer && (isAdmin || hasPermission("tasks", "canCreate"));
-  const canEditTasks = !isViewer && (isAdmin || hasPermission("tasks", "canEdit"));
-  const canDeleteTasks = !isViewer && (isAdmin || hasPermission("tasks", "canDelete"));
+  const canCreateTasks = isAdmin || hasPermission("tasks", "canCreate");
+  const canEditTasks = isAdmin || hasPermission("tasks", "canEdit");
+  const canDeleteTasks = isAdmin || hasPermission("tasks", "canDelete");
   const [searchParams, setSearchParams] = useSearchParams();
 
   const urlProjectId =
@@ -170,9 +169,10 @@ export const TasksPage: React.FC = () => {
   }, [selectedProjectId]);
 
   useEffect(() => {
+    fetchProfile();
     fetchProjects();
     fetchUsers();
-  }, [fetchProjects, fetchUsers]);
+  }, [fetchProfile, fetchProjects, fetchUsers]);
 
   useEffect(() => {
     fetchTasks();
@@ -187,16 +187,26 @@ export const TasksPage: React.FC = () => {
       joinProjectRoom(selectedProjectId);
     }
 
-    const handleTaskCreated = (newTask: any) => {
+    const handleTaskCreated = (payload: any) => {
+      const taskData = payload?.task || payload;
+      if (!taskData || !taskData.id) return;
+
+      if (selectedProjectId !== "all" && taskData.projectId && taskData.projectId !== selectedProjectId) {
+        return;
+      }
+
       setTasks((prev) => {
-        if (prev.some((t) => t.id === newTask.id)) return prev;
-        return [...prev, newTask];
+        if (prev.some((t) => t && t.id === taskData.id)) return prev;
+        return [...prev, taskData];
       });
-      addToast(
-        "Task Created",
-        `New task "${newTask.title}" was created`,
-        "info",
-      );
+
+      if (payload?.actor?.id !== user?.id) {
+        addToast(
+          "Task Created",
+          `New task "${taskData.title || 'Untitled'}" was created by ${payload?.actor?.fullName || 'a team member'}`,
+          "info",
+        );
+      }
     };
 
     const handleTaskUpdated = (payload: any) => {
@@ -258,27 +268,29 @@ export const TasksPage: React.FC = () => {
 
   // Statistics counts
   const stats = useMemo(() => {
-    const total = tasks.length;
-    const pending = tasks.filter((t) => t.status === "Pending").length;
-    const inProgress = tasks.filter((t) => t.status === "In Progress").length;
-    const completed = tasks.filter((t) => t.status === "Completed").length;
+    const validTasks = tasks.filter((t) => t && t.id);
+    const total = validTasks.length;
+    const pending = validTasks.filter((t) => t.status === "Pending").length;
+    const inProgress = validTasks.filter((t) => t.status === "In Progress").length;
+    const completed = validTasks.filter((t) => t.status === "Completed").length;
     return { total, pending, inProgress, completed };
   }, [tasks]);
 
   // Filter tasks based on activeTab, project, and search
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
+      if (!task || !task.id) return false;
       const matchesTab =
         viewMode === "board" ||
         activeTab === "All" ||
         (activeTab === "To Do" && task.status === "Pending") ||
         task.status === activeTab;
+      const title = (task.title || "").toLowerCase();
+      const desc = (task.description || "").toLowerCase();
+      const projName = (task.projectName || "").toLowerCase();
+      const q = (search || "").toLowerCase();
       const matchesSearch =
-        task.title.toLowerCase().includes(search.toLowerCase()) ||
-        (task.description &&
-          task.description.toLowerCase().includes(search.toLowerCase())) ||
-        (task.projectName &&
-          task.projectName.toLowerCase().includes(search.toLowerCase()));
+        !q || title.includes(q) || desc.includes(q) || projName.includes(q);
       return matchesTab && matchesSearch;
     });
   }, [tasks, activeTab, search, viewMode]);
@@ -939,10 +951,8 @@ export const TasksPage: React.FC = () => {
         >
           <AlertCircle size={18} color="#64748b" />
           <span>
-            {isViewer
-              ? "You have Viewer access to tasks. Editing, creating, and reordering are disabled."
-              : !canEditTasks && !canCreateTasks
-              ? "You currently have read-only access to tasks. Editing and creation permissions have been restricted."
+            {!canEditTasks && !canCreateTasks
+              ? "You currently have read-only access to tasks. Editing and creation permissions have been restricted for your role."
               : !canEditTasks
               ? "Editing permissions have been restricted for your role. You cannot edit tasks, update status, or reorder."
               : "Task creation is disabled for your role."}

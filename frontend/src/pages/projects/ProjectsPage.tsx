@@ -44,10 +44,14 @@ const ICONS = [
 const COLORS = ['#8b5cf6', '#3b82f6', '#10b981', '#6366f1', '#0ea5e9', '#ec4899', '#f59e0b'];
 
 export const ProjectsPage: React.FC = () => {
-  const { user } = useAuthStore();
+  const { user, hasPermission, fetchProfile } = useAuthStore();
   const { addToast, addNotification, fetchNotifications } = useNotificationStore();
   const navigate = useNavigate();
   const isAdmin = user?.role === 'admin';
+  const canViewProjects = isAdmin || hasPermission('projects', 'canView');
+  const canCreateProjects = isAdmin || hasPermission('projects', 'canCreate');
+  const canEditProjects = isAdmin || hasPermission('projects', 'canEdit');
+  const canDeleteProjects = isAdmin || hasPermission('projects', 'canDelete');
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [allUsers, setAllUsers] = useState<any[]>([]);
@@ -94,7 +98,6 @@ export const ProjectsPage: React.FC = () => {
   }, [addToast]);
 
   const fetchUsers = useCallback(async () => {
-    if (!isAdmin) return;
     try {
       const data: any = await api.get('/users?limit=50');
       const list = data?.data || data?.users || (Array.isArray(data) ? data : []);
@@ -102,12 +105,13 @@ export const ProjectsPage: React.FC = () => {
     } catch (err) {
       console.warn('Failed to load users for project members selection');
     }
-  }, [isAdmin]);
+  }, []);
 
   useEffect(() => {
+    fetchProfile();
     fetchProjects();
     fetchUsers();
-  }, [fetchProjects, fetchUsers]);
+  }, [fetchProfile, fetchProjects, fetchUsers]);
 
   // Real-time project assigned listener
   useEffect(() => {
@@ -128,6 +132,10 @@ export const ProjectsPage: React.FC = () => {
 
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canCreateProjects) {
+      addToast('Permission Denied', 'You do not have permission to create projects', 'error');
+      return;
+    }
     if (!newProjectName.trim()) return;
 
     try {
@@ -139,21 +147,6 @@ export const ProjectsPage: React.FC = () => {
         dueDate: newProjectDueDate ? new Date(newProjectDueDate).toISOString() : undefined,
         memberIds: selectedMemberIds,
       });
-
-      if (selectedMemberIds.length > 0) {
-        const assignedUsers = allUsers.filter((u) => selectedMemberIds.includes(u.id));
-        const names = assignedUsers.map((u) => u.fullName).join(', ');
-        addNotification({
-          id: Math.random().toString(),
-          userId: user?.id || 'me',
-          title: 'Member Assigned to Project',
-          message: `Assigned ${names || 'team member'} to project "${newProjectName}".`,
-          type: 'project_assigned',
-          referenceId: undefined,
-          isRead: false,
-          createdAt: new Date().toISOString(),
-        });
-      }
 
       addToast('Success', `Project "${newProjectName}" created successfully`, 'success');
       setIsModalOpen(false);
@@ -171,6 +164,10 @@ export const ProjectsPage: React.FC = () => {
   };
 
   const openEditModal = (project: Project) => {
+    if (!canEditProjects) {
+      addToast('Permission Denied', 'You do not have permission to edit projects', 'error');
+      return;
+    }
     setEditingProject(project);
     setEditName(project.name);
     setEditDesc(project.description || '');
@@ -182,6 +179,10 @@ export const ProjectsPage: React.FC = () => {
 
   const handleUpdateProject = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canEditProjects) {
+      addToast('Permission Denied', 'You do not have permission to edit projects', 'error');
+      return;
+    }
     if (!editingProject || !editName.trim()) return;
 
     try {
@@ -219,6 +220,10 @@ export const ProjectsPage: React.FC = () => {
   };
 
   const openMembersModal = (project: Project) => {
+    if (!canEditProjects) {
+      addToast('Permission Denied', 'You do not have permission to manage project members', 'error');
+      return;
+    }
     setActiveProjectForMembers(project);
     const existingIds = (project.members || []).map((m: any) => m.id);
     setProjectMemberIds(existingIds);
@@ -228,6 +233,10 @@ export const ProjectsPage: React.FC = () => {
 
   const handleSaveMembers = async () => {
     if (!activeProjectForMembers) return;
+    if (!canEditProjects) {
+      addToast('Permission Denied', 'You do not have permission to manage project members', 'error');
+      return;
+    }
     try {
       setIsSavingMembers(true);
       const existingIds = (activeProjectForMembers.members || []).map((m: any) => m.id);
@@ -284,8 +293,8 @@ export const ProjectsPage: React.FC = () => {
   };
 
   const handleDeleteProject = async (id: string, name: string) => {
-    if (!isAdmin) {
-      addToast('Permission Denied', 'Only administrators can delete projects', 'error');
+    if (!canDeleteProjects) {
+      addToast('Permission Denied', 'You do not have permission to delete projects', 'error');
       return;
     }
     if (window.confirm(`Are you sure you want to delete project "${name}" and all its tasks?`)) {
@@ -317,9 +326,9 @@ export const ProjectsPage: React.FC = () => {
             <h1 style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a' }}>Projects</h1>
           </div>
           <p style={{ fontSize: '13.5px', color: '#64748b', marginTop: '2px' }}>
-            {isAdmin
+            {canCreateProjects
               ? 'Create and manage projects, assign members, and track real-time delivery.'
-              : 'Projects you have been assigned to as an active team member.'}
+              : 'Projects you have access to as an active team member.'}
           </p>
         </div>
       </div>
@@ -402,8 +411,8 @@ export const ProjectsPage: React.FC = () => {
               <option value="completed">Completed</option>
             </select>
 
-            {/* Create Project Button (Admin Only) */}
-            {isAdmin && (
+            {/* Create Project Button */}
+            {canCreateProjects && (
               <Button
                 variant="primary"
                 icon={<Plus size={16} />}
@@ -504,9 +513,9 @@ export const ProjectsPage: React.FC = () => {
                       <td style={{ padding: '16px 20px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <div
-                            style={{ display: 'flex', alignItems: 'center', cursor: isAdmin ? 'pointer' : 'default' }}
-                            onClick={() => isAdmin && openMembersModal(project)}
-                            title={isAdmin ? 'Click to assign or manage members' : undefined}
+                            style={{ display: 'flex', alignItems: 'center', cursor: canEditProjects ? 'pointer' : 'default' }}
+                            onClick={() => canEditProjects && openMembersModal(project)}
+                            title={canEditProjects ? 'Click to assign or manage members' : undefined}
                           >
                             {project.members && project.members.length > 0 ? (
                               project.members.slice(0, 3).map((m: any, mIdx: number) => {
@@ -561,7 +570,7 @@ export const ProjectsPage: React.FC = () => {
                             )}
                           </div>
 
-                          {isAdmin && (
+                          {canEditProjects && (
                             <button
                               onClick={() => openMembersModal(project)}
                               style={{
@@ -652,7 +661,7 @@ export const ProjectsPage: React.FC = () => {
                           >
                             <Eye size={16} />
                           </button>
-                          {isAdmin && (
+                          {canEditProjects && (
                             <>
                               <button
                                 onClick={() => openMembersModal(project)}
@@ -668,14 +677,16 @@ export const ProjectsPage: React.FC = () => {
                               >
                                 <Edit2 size={16} />
                               </button>
-                              <button
-                                onClick={() => handleDeleteProject(project.id, project.name)}
-                                style={{ color: '#ef4444', padding: '6px', borderRadius: '6px', border: 'none', background: 'transparent', cursor: 'pointer' }}
-                                title="Delete Project"
-                              >
-                                <Trash2 size={16} />
-                              </button>
                             </>
+                          )}
+                          {canDeleteProjects && (
+                            <button
+                              onClick={() => handleDeleteProject(project.id, project.name)}
+                              style={{ color: '#ef4444', padding: '6px', borderRadius: '6px', border: 'none', background: 'transparent', cursor: 'pointer' }}
+                              title="Delete Project"
+                            >
+                              <Trash2 size={16} />
+                            </button>
                           )}
                         </div>
                       </td>
@@ -688,9 +699,9 @@ export const ProjectsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Modal: Create Project (Admin Only) */}
+      {/* Modal: Create Project */}
       <Modal
-        isOpen={isModalOpen}
+        isOpen={isModalOpen && canCreateProjects}
         onClose={() => setIsModalOpen(false)}
         title="Create New Project"
         subtitle="Set up a workspace and assign team members."
@@ -882,7 +893,7 @@ export const ProjectsPage: React.FC = () => {
 
       {/* Modal: Edit Project */}
       <Modal
-        isOpen={isEditModalOpen}
+        isOpen={isEditModalOpen && canEditProjects}
         onClose={() => setIsEditModalOpen(false)}
         title="Edit Project"
         subtitle="Update project settings and assign team members."
@@ -1052,9 +1063,9 @@ export const ProjectsPage: React.FC = () => {
         </form>
       </Modal>
 
-      {/* Modal: Manage Project Members (Admin Dedicated) */}
+      {/* Modal: Manage Project Members */}
       <Modal
-        isOpen={isMembersModalOpen}
+        isOpen={isMembersModalOpen && canEditProjects}
         onClose={() => setIsMembersModalOpen(false)}
         title={`Assign Members: ${activeProjectForMembers?.name || 'Project'}`}
         subtitle="Assign users to this project and collaborate with real-time updates."

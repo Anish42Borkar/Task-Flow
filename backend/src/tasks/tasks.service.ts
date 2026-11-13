@@ -383,37 +383,78 @@ export class TasksService {
     const currentAssigneeIds = dto.assigneeIds ? dto.assigneeIds : prevAssigneeIds;
     const statusChanged = dto.status && dto.status !== existing.status;
 
-    // Notify other assignees and task creator about task update / status change
-    const otherRecipients = new Set<string>();
-    for (const uid of currentAssigneeIds) {
-      if (uid !== actor.id && !newlyAssignedIds.includes(uid)) {
-        otherRecipients.add(uid);
-      }
-    }
-    if (existing.createdBy && existing.createdBy !== actor.id && !newlyAssignedIds.includes(existing.createdBy)) {
-      otherRecipients.add(existing.createdBy);
-    }
+    if (statusChanged) {
+      // Notify all users in the project when task status changes
+      const projectMembersList = await this.db
+        .select({ userId: schema.projectMembers.userId })
+        .from(schema.projectMembers)
+        .where(eq(schema.projectMembers.projectId, existing.projectId));
 
-    for (const userId of otherRecipients) {
-      if (statusChanged) {
-        const notifTitle = dto.status === 'Completed' ? 'Task Completed' : 'Task Status Changed';
-        const notifMsg = `Task "${updatedTask.title}" status changed to "${dto.status}" by ${actor.fullName}.`;
-        const notifType = dto.status === 'Completed' ? 'task_completed' : 'task_updated';
-        await this.notificationsService.createNotification(
-          userId,
-          notifTitle,
-          notifMsg,
-          notifType,
-          updatedTask.id,
-        );
-      } else {
-        await this.notificationsService.createNotification(
-          userId,
-          'Task Updated',
-          `Task "${updatedTask.title}" was updated by ${actor.fullName}.`,
-          'task_updated',
-          updatedTask.id,
-        );
+      const [project] = await this.db
+        .select({ name: schema.projects.name, createdBy: schema.projects.createdBy })
+        .from(schema.projects)
+        .where(eq(schema.projects.id, existing.projectId))
+        .limit(1);
+
+      const statusRecipients = new Set<string>();
+      for (const pm of projectMembersList) {
+        if (pm.userId) statusRecipients.add(pm.userId);
+      }
+      if (project?.createdBy) {
+        statusRecipients.add(project.createdBy);
+      }
+      for (const uid of currentAssigneeIds) {
+        statusRecipients.add(uid);
+      }
+      if (existing.createdBy) {
+        statusRecipients.add(existing.createdBy);
+      }
+      if (actor?.id) {
+        statusRecipients.delete(actor.id);
+      }
+
+      const projectName = project?.name || 'Project';
+      const notifTitle = dto.status === 'Completed' ? 'Task Completed' : 'Task Status Changed';
+      const notifMsg = `Task "${updatedTask.title}" in "${projectName}" was moved to "${dto.status}" by ${actor.fullName}.`;
+      const notifType = dto.status === 'Completed' ? 'task_completed' : 'task_updated';
+
+      for (const userId of statusRecipients) {
+        try {
+          await this.notificationsService.createNotification(
+            userId,
+            notifTitle,
+            notifMsg,
+            notifType,
+            updatedTask.id,
+          );
+        } catch (err) {
+          console.warn(`Failed to notify user ${userId} on status change`, err);
+        }
+      }
+    } else {
+      // Notify other assignees and task creator about general task update
+      const otherRecipients = new Set<string>();
+      for (const uid of currentAssigneeIds) {
+        if (uid !== actor.id && !newlyAssignedIds.includes(uid)) {
+          otherRecipients.add(uid);
+        }
+      }
+      if (existing.createdBy && existing.createdBy !== actor.id && !newlyAssignedIds.includes(existing.createdBy)) {
+        otherRecipients.add(existing.createdBy);
+      }
+
+      for (const userId of otherRecipients) {
+        try {
+          await this.notificationsService.createNotification(
+            userId,
+            'Task Updated',
+            `Task "${updatedTask.title}" was updated by ${actor.fullName}.`,
+            'task_updated',
+            updatedTask.id,
+          );
+        } catch (err) {
+          console.warn(`Failed to notify user ${userId} on task update`, err);
+        }
       }
     }
 
@@ -448,7 +489,7 @@ export class TasksService {
       .where(eq(schema.tasks.id, id))
       .returning();
 
-    // Broadcast status change
+    // Broadcast status change to project room
     this.eventsGateway.broadcastToProject(existing.projectId, 'task:status_changed', {
       taskId: id,
       status,
@@ -456,32 +497,57 @@ export class TasksService {
       actor: { id: actor.id, fullName: actor.fullName },
     });
 
-    // Notify all assignees and task creator
+    // Notify ALL users who are part of this project about the status change
+    const projectMembersList = await this.db
+      .select({ userId: schema.projectMembers.userId })
+      .from(schema.projectMembers)
+      .where(eq(schema.projectMembers.projectId, existing.projectId));
+
+    const [project] = await this.db
+      .select({ name: schema.projects.name, createdBy: schema.projects.createdBy })
+      .from(schema.projects)
+      .where(eq(schema.projects.id, existing.projectId))
+      .limit(1);
+
     const assignees = await this.db
       .select({ userId: schema.taskAssignees.userId })
       .from(schema.taskAssignees)
       .where(eq(schema.taskAssignees.taskId, id));
 
     const recipients = new Set<string>();
-    for (const a of assignees) {
-      if (a.userId !== actor.id) recipients.add(a.userId);
+    for (const pm of projectMembersList) {
+      if (pm.userId) recipients.add(pm.userId);
     }
-    if (existing.createdBy && existing.createdBy !== actor.id) {
+    if (project?.createdBy) {
+      recipients.add(project.createdBy);
+    }
+    for (const a of assignees) {
+      if (a.userId) recipients.add(a.userId);
+    }
+    if (existing.createdBy) {
       recipients.add(existing.createdBy);
     }
+    if (actor?.id) {
+      recipients.delete(actor.id);
+    }
 
+    const projectName = project?.name || 'Project';
     const notifTitle = status === 'Completed' ? 'Task Completed' : 'Task Status Changed';
-    const notifMsg = `Task "${existing.title}" status changed to "${status}" by ${actor.fullName}.`;
+    const notifMsg = `Task "${existing.title}" in "${projectName}" was moved to "${status}" by ${actor.fullName}.`;
     const notifType = status === 'Completed' ? 'task_completed' : 'task_updated';
 
     for (const userId of recipients) {
-      await this.notificationsService.createNotification(
-        userId,
-        notifTitle,
-        notifMsg,
-        notifType,
-        updated.id,
-      );
+      try {
+        await this.notificationsService.createNotification(
+          userId,
+          notifTitle,
+          notifMsg,
+          notifType,
+          updated.id,
+        );
+      } catch (err) {
+        console.warn(`Failed to notify user ${userId} on status change`, err);
+      }
     }
 
     return updated;

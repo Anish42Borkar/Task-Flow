@@ -1,0 +1,271 @@
+/* ==========================================================================
+   TaskFlow AppLayout - Responsive & All-Device Media Queries
+   ========================================================================== */
+
+/* Main Page Container */
+.app-layout-container {
+  display: flex;
+  min-height: 100vh;
+  background-color: #f8fafc;
+  width: 100%;
+  overflow-x: hidden;
+}
+
+/* --------------------------------------------------------------------------
+   Sidebar - Desktop Sticky & Mobile Drawer
+   -------------------------------------------------------------------------- */
+.app-sidebar {
+  width: 260px;
+  background-color: #0f172a;
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 40;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.app-sidebar.collapsed {
+  width: 80px;
+}
+
+/* Mobile Sidebar Drawer (< 1024px) */
+@media (max-width: 1023px) {
+  .app-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 270px !important;
+    height: 100vh;
+    z-index: 100;
+    transform: translateX(-100%);
+    box-shadow: 4px 0 24px rgba(15, 23, 42, 0.35);
+  }
+
+  .app-sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  .mobile-close-btn {
+    display: flex !important;
+  }
+
+  .mobile-sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background-color: rgba(15, 23, 42, 0.55);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    z-index: 90;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+
+  .mobile-sidebar-backdrop.active {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+@media (min-width: 1024px) {
+  .mobile-sidebar-backdrop {
+    display: none !important;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Header - Responsive Navbar & Dropdowns
+   -------------------------------------------------------------------------- */
+.app-header {
+  height: 70px;
+  background-color: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 28px;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+  max-width: 500px;
+}
+
+.header-search-container {
+  display: flex;
+  align-items: center;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 8px 14px;
+  width: 100%;
+  max-width: 360px;
+  box-sizing: border-box;
+  transition: all 0.15s ease;
+}
+
+.header-search-container:focus-within {
+  border-color: #4f46e5;
+  background-color: #ffffff;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.header-search-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.header-user-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px;
+  border-radius: 10px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.header-user-btn:hover {
+  background-color: #f1f5f9;
+}
+
+.header-user-info {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  line-height: 1.2;
+}
+
+.header-user-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #0f172a;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header-user-role {
+  font-size: 11.5px;
+  color: #64748b;
+  text-transform: capitalize;
+}
+
+/* Responsive Header Tweaks */
+@media (max-width: 768px) {
+  .app-header {
+    height: 64px;
+    padding: 0 16px;
+  }
+
+  .header-left {
+    gap: 10px;
+  }
+
+  .header-right {
+    gap: 10px;
+  }
+}
+
+@media (max-width: 640px) {
+  .header-search-container {
+    max-width: 190px;
+    padding: 6px 10px;
+  }
+
+  .header-search-badge {
+    display: none !important;
+  }
+
+  .header-user-info {
+    display: none !important;
+  }
+
+  .header-user-chevron {
+    display: none !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .header-search-container {
+    max-width: 140px;
+    padding: 6px 8px;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Notification Popover on Small Screens
+   -------------------------------------------------------------------------- */
+.notification-popover {
+  position: absolute;
+  right: 0;
+  top: 46px;
+  width: 360px;
+  background-color: #ffffff;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 12px 28px -4px rgba(15, 23, 42, 0.15);
+  z-index: 50;
+  overflow: hidden;
+}
+
+@media (max-width: 480px) {
+  .notification-popover {
+    width: calc(100vw - 32px);
+    right: -50px;
+    max-width: 340px;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Main Content Area
+   -------------------------------------------------------------------------- */
+.app-main-content {
+  flex: 1;
+  padding: 32px 36px;
+  overflow-y: auto;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+@media (max-width: 1023px) {
+  .app-main-content {
+    padding: 24px 20px;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-main-content {
+    padding: 16px 14px;
+  }
+}

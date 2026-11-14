@@ -18,11 +18,13 @@ import {
   Layers,
   ArrowRight,
   Trash2,
+  X,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useNotificationStore } from '../stores/notificationStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { ToastContainer } from '../components/feedback/ToastContainer';
+import './layout.css';
 
 export const AppLayout: React.FC = () => {
   const { user, logout } = useAuthStore();
@@ -39,12 +41,18 @@ export const AppLayout: React.FC = () => {
   const location = useLocation();
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [notificationDropdownOpen, setNotificationDropdownOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
   const isAdmin = user?.role === 'admin';
+
+  // Automatically close mobile menu on route change
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
 
   useEffect(() => {
     if (user?.id) {
@@ -89,53 +97,67 @@ export const AppLayout: React.FC = () => {
   });
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#f8fafc' }}>
+    <div className="app-layout-container">
+      {/* Mobile Drawer Backdrop */}
+      <div
+        className={`mobile-sidebar-backdrop ${mobileMenuOpen ? 'active' : ''}`}
+        onClick={() => setMobileMenuOpen(false)}
+      />
+
       {/* Dark Navy Sidebar */}
-      <aside
-        style={{
-          width: sidebarOpen ? '260px' : '80px',
-          backgroundColor: '#0f172a',
-          color: '#ffffff',
-          display: 'flex',
-          flexDirection: 'column',
-          transition: 'width 0.2s ease',
-          zIndex: 40,
-          position: 'sticky',
-          top: 0,
-          height: '100vh',
-          flexShrink: 0,
-        }}
-      >
+      <aside className={`app-sidebar ${sidebarOpen ? '' : 'collapsed'} ${mobileMenuOpen ? 'mobile-open' : ''}`}>
         {/* Brand Header */}
         <div
           style={{
             height: '70px',
             display: 'flex',
             alignItems: 'center',
+            justifyContent: 'space-between',
             padding: '0 20px',
-            gap: '12px',
             borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
           }}
         >
-          <div
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div
+              style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '8px',
+                backgroundColor: '#4f46e5',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#ffffff',
+                flexShrink: 0,
+              }}
+            >
+              <Check size={22} strokeWidth={3} />
+            </div>
+            {sidebarOpen && (
+              <span style={{ fontSize: '19px', fontWeight: 700, letterSpacing: '-0.3px', whiteSpace: 'nowrap' }}>
+                {appName || 'TaskFlow'}
+              </span>
+            )}
+          </div>
+          {/* Close button for mobile drawer */}
+          <button
+            className="mobile-close-btn"
+            onClick={() => setMobileMenuOpen(false)}
             style={{
-              width: '36px',
-              height: '36px',
-              borderRadius: '8px',
-              backgroundColor: '#4f46e5',
-              display: 'flex',
+              color: '#94a3b8',
+              padding: '6px',
+              borderRadius: '6px',
+              display: 'none',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#ffffff',
+              border: 'none',
+              background: 'transparent',
+              cursor: 'pointer',
             }}
+            title="Close sidebar"
           >
-            <Check size={22} strokeWidth={3} />
-          </div>
-          {sidebarOpen && (
-            <span style={{ fontSize: '19px', fontWeight: 700, letterSpacing: '-0.3px' }}>
-              {appName || 'TaskFlow'}
-            </span>
-          )}
+            <X size={20} />
+          </button>
         </div>
 
         {/* Navigation Links */}
@@ -235,48 +257,34 @@ export const AppLayout: React.FC = () => {
       {/* Main Content Area */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         {/* Top Header */}
-        <header
-          style={{
-            height: '70px',
-            backgroundColor: '#ffffff',
-            borderBottom: '1px solid #e2e8f0',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '0 28px',
-            position: 'sticky',
-            top: 0,
-            zIndex: 30,
-          }}
-        >
+        <header className="app-header">
           {/* Left section: Toggle & Search */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: 1, maxWidth: '500px' }}>
+          <div className="header-left">
             <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
+              onClick={() => {
+                if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+                  setMobileMenuOpen(!mobileMenuOpen);
+                } else {
+                  setSidebarOpen(!sidebarOpen);
+                }
+              }}
               style={{
                 color: '#64748b',
                 padding: '8px',
                 borderRadius: '8px',
                 display: 'flex',
                 alignItems: 'center',
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
               }}
+              title="Toggle Menu"
             >
               <Menu size={20} />
             </button>
 
             {/* Search Input with Ctrl + K */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                backgroundColor: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                borderRadius: '10px',
-                padding: '8px 14px',
-                width: '100%',
-                maxWidth: '360px',
-              }}
-            >
+            <div className="header-search-container">
               <Search size={16} color="#94a3b8" style={{ marginRight: '8px' }} />
               <input
                 type="text"
@@ -290,25 +298,14 @@ export const AppLayout: React.FC = () => {
                   color: '#0f172a',
                 }}
               />
-              <span
-                style={{
-                  fontSize: '11px',
-                  fontWeight: 600,
-                  color: '#94a3b8',
-                  backgroundColor: '#ffffff',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '6px',
-                  padding: '2px 6px',
-                  whiteSpace: 'nowrap',
-                }}
-              >
+              <span className="header-search-badge">
                 Ctrl + K
               </span>
             </div>
           </div>
 
           {/* Right section: Notification Bell & Profile dropdown */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+          <div className="header-right">
             {/* Notification Bell Dropdown */}
             <div ref={notifRef} style={{ position: 'relative' }}>
               <button
@@ -354,20 +351,7 @@ export const AppLayout: React.FC = () => {
 
               {/* Notification Popover */}
               {notificationDropdownOpen && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    right: 0,
-                    top: '46px',
-                    width: '360px',
-                    backgroundColor: '#ffffff',
-                    borderRadius: '14px',
-                    border: '1px solid #e2e8f0',
-                    boxShadow: '0 12px 28px -4px rgba(15, 23, 42, 0.15)',
-                    zIndex: 50,
-                    overflow: 'hidden',
-                  }}
-                >
+                <div className="notification-popover">
                   {/* Popover Header */}
                   <div
                     style={{
@@ -583,15 +567,8 @@ export const AppLayout: React.FC = () => {
             {/* User Profile Pill */}
             <div ref={profileRef} style={{ position: 'relative' }}>
               <button
+                className="header-user-btn"
                 onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  padding: '4px 8px',
-                  borderRadius: '10px',
-                  transition: 'background-color 0.15s ease',
-                }}
               >
                 <div
                   style={{
@@ -605,6 +582,7 @@ export const AppLayout: React.FC = () => {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
+                    flexShrink: 0,
                   }}
                 >
                   {user?.fullName
@@ -616,15 +594,15 @@ export const AppLayout: React.FC = () => {
                         .toUpperCase()
                     : 'AB'}
                 </div>
-                <div style={{ textAlign: 'left', lineHeight: 1.2 }}>
-                  <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#0f172a' }}>
+                <div className="header-user-info">
+                  <div className="header-user-name">
                     {user?.fullName || 'Anish Borkar'}
                   </div>
-                  <div style={{ fontSize: '11.5px', color: '#64748b', textTransform: 'capitalize' }}>
+                  <div className="header-user-role">
                     {user?.role || 'Admin'}
                   </div>
                 </div>
-                <ChevronDown size={14} color="#64748b" />
+                <ChevronDown size={14} color="#64748b" className="header-user-chevron" />
               </button>
 
               {/* Dropdown Menu */}
@@ -703,7 +681,7 @@ export const AppLayout: React.FC = () => {
         </header>
 
         {/* Page Content */}
-        <main style={{ flex: 1, padding: '32px 36px', overflowY: 'auto' }}>
+        <main className="app-main-content">
           <Outlet />
         </main>
       </div>

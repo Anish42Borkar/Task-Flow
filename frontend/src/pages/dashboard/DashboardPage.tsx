@@ -20,6 +20,7 @@ import { Card } from "../../components/common/Card";
 import { Badge } from "../../components/common/Badge";
 import { api } from "../../services/api";
 import { Project, Task } from "../../types";
+import "./dashboard.css";
 
 export const DashboardPage: React.FC = () => {
   const { user } = useAuthStore();
@@ -86,15 +87,15 @@ export const DashboardPage: React.FC = () => {
     totalTasks > 0 ? Math.round((pendingTasks / totalTasks) * 100) : 0;
 
   return (
-    <div>
+    <div className="dashboard-container">
       {/* Top Welcome & Header */}
-      <div style={{ marginBottom: "28px" }}>
-        <h1 style={{ fontSize: "24px", fontWeight: 800, color: "#0f172a" }}>
+      <div className="dashboard-header">
+        <h1 className="dashboard-title">
           {isAdmin
             ? "Admin Dashboard"
             : `Hello, ${user?.fullName?.split(" ")[0] || "Team Member"} 👋`}
         </h1>
-        <p style={{ fontSize: "14px", color: "#64748b", marginTop: "4px" }}>
+        <p className="dashboard-subtitle">
           {isAdmin
             ? "Real-time overview of projects, tasks, and teams across your organization."
             : "Here's your work overview at a glance."}
@@ -102,16 +103,7 @@ export const DashboardPage: React.FC = () => {
       </div>
 
       {isLoading ? (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "80px",
-            color: "#64748b",
-            gap: "10px",
-          }}
-        >
+        <div className="dashboard-loading-box">
           <Loader2 size={24} className="spin-animate" />
           <span>Loading dashboard analytics...</span>
         </div>
@@ -119,221 +111,83 @@ export const DashboardPage: React.FC = () => {
         // /* ======================== ADMIN DASHBOARD ======================== */
         <div style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
           {/* Top 4 Stat Cards */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-              gap: "20px",
-            }}
-          >
+          <div className="dashboard-stats-grid">
             {/* Stat 1: Total Projects */}
-            <Card style={{ padding: "20px" }}>
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "16px" }}
-              >
+            <Card className="dashboard-stat-card">
+              <div className="dashboard-stat-inner">
                 <div
+                  className="dashboard-stat-icon"
                   style={{
-                    width: "48px",
-                    height: "48px",
-                    borderRadius: "12px",
                     backgroundColor: "#eef2ff",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
                     color: "#4f46e5",
                   }}
                 >
                   <Folder size={24} />
                 </div>
-                <div>
-                  <div
-                    style={{
-                      fontSize: "13px",
-                      fontWeight: 600,
-                      color: "#64748b",
-                    }}
-                  >
-                    Total Projects
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "26px",
-                      fontWeight: 800,
-                      color: "#0f172a",
-                      lineHeight: 1.2,
-                    }}
-                  >
-                    {totalProjects}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "12px",
-                      color: "#059669",
-                      fontWeight: 600,
-                      marginTop: "2px",
-                    }}
-                  >
-                    Live in PostgreSQL
-                  </div>
+                <div className="dashboard-stat-info">
+                  <div className="dashboard-stat-label">Total Projects</div>
+                  <div className="dashboard-stat-value">{totalProjects}</div>
+                  <div className="dashboard-stat-subtext">Live in PostgreSQL</div>
                 </div>
               </div>
             </Card>
 
             {/* Stat 2: Total Users */}
-            <Card style={{ padding: "20px" }}>
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "16px" }}
-              >
+            <Card className="dashboard-stat-card">
+              <div className="dashboard-stat-inner">
                 <div
+                  className="dashboard-stat-icon"
                   style={{
-                    width: "48px",
-                    height: "48px",
-                    borderRadius: "12px",
                     backgroundColor: "#eff6ff",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
                     color: "#2563eb",
                   }}
                 >
                   <Users size={24} />
                 </div>
-                <div>
-                  <div
-                    style={{
-                      fontSize: "13px",
-                      fontWeight: 600,
-                      color: "#64748b",
-                    }}
-                  >
-                    Total Users
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "26px",
-                      fontWeight: 800,
-                      color: "#0f172a",
-                      lineHeight: 1.2,
-                    }}
-                  >
-                    {totalUsersCount}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "12px",
-                      color: "#059669",
-                      fontWeight: 600,
-                      marginTop: "2px",
-                    }}
-                  >
-                    Active accounts
-                  </div>
+                <div className="dashboard-stat-info">
+                  <div className="dashboard-stat-label">Total Users</div>
+                  <div className="dashboard-stat-value">{totalUsersCount}</div>
+                  <div className="dashboard-stat-subtext">Active accounts</div>
                 </div>
               </div>
             </Card>
 
             {/* Stat 3: Total Tasks */}
-            <Card style={{ padding: "20px" }}>
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "16px" }}
-              >
+            <Card className="dashboard-stat-card">
+              <div className="dashboard-stat-inner">
                 <div
+                  className="dashboard-stat-icon"
                   style={{
-                    width: "48px",
-                    height: "48px",
-                    borderRadius: "12px",
                     backgroundColor: "#fffbeb",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
                     color: "#d97706",
                   }}
                 >
                   <CheckSquare size={24} />
                 </div>
-                <div>
-                  <div
-                    style={{
-                      fontSize: "13px",
-                      fontWeight: 600,
-                      color: "#64748b",
-                    }}
-                  >
-                    Total Tasks
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "26px",
-                      fontWeight: 800,
-                      color: "#0f172a",
-                      lineHeight: 1.2,
-                    }}
-                  >
-                    {totalTasks}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "12px",
-                      color: "#059669",
-                      fontWeight: 600,
-                      marginTop: "2px",
-                    }}
-                  >
-                    With DnD persistence
-                  </div>
+                <div className="dashboard-stat-info">
+                  <div className="dashboard-stat-label">Total Tasks</div>
+                  <div className="dashboard-stat-value">{totalTasks}</div>
+                  <div className="dashboard-stat-subtext">With DnD persistence</div>
                 </div>
               </div>
             </Card>
 
             {/* Stat 4: Completed Tasks */}
-            <Card style={{ padding: "20px" }}>
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "16px" }}
-              >
+            <Card className="dashboard-stat-card">
+              <div className="dashboard-stat-inner">
                 <div
+                  className="dashboard-stat-icon"
                   style={{
-                    width: "48px",
-                    height: "48px",
-                    borderRadius: "12px",
                     backgroundColor: "#ecfdf5",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
                     color: "#059669",
                   }}
                 >
                   <CheckCircle2 size={24} />
                 </div>
-                <div>
-                  <div
-                    style={{
-                      fontSize: "13px",
-                      fontWeight: 600,
-                      color: "#64748b",
-                    }}
-                  >
-                    Completed Tasks
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "26px",
-                      fontWeight: 800,
-                      color: "#0f172a",
-                      lineHeight: 1.2,
-                    }}
-                  >
-                    {completedTasks}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "12px",
-                      color: "#059669",
-                      fontWeight: 600,
-                      marginTop: "2px",
-                    }}
-                  >
-                    {completedPct}% completion rate
-                  </div>
+                <div className="dashboard-stat-info">
+                  <div className="dashboard-stat-label">Completed Tasks</div>
+                  <div className="dashboard-stat-value">{completedTasks}</div>
+                  <div className="dashboard-stat-subtext">{completedPct}% completion rate</div>
                 </div>
               </div>
             </Card>
@@ -799,173 +653,75 @@ export const DashboardPage: React.FC = () => {
         // /* ======================== USER DASHBOARD ======================== */
         <div style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
           {/* User 4 Stat Cards */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-              gap: "20px",
-            }}
-          >
-            <Card style={{ padding: "20px" }}>
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "16px" }}
-              >
+          <div className="dashboard-stats-grid">
+            <Card className="dashboard-stat-card">
+              <div className="dashboard-stat-inner">
                 <div
+                  className="dashboard-stat-icon"
                   style={{
-                    width: "48px",
-                    height: "48px",
-                    borderRadius: "12px",
                     backgroundColor: "#eef2ff",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
                     color: "#4f46e5",
                   }}
                 >
                   <CheckSquare size={24} />
                 </div>
-                <div>
-                  <div
-                    style={{
-                      fontSize: "13px",
-                      fontWeight: 600,
-                      color: "#64748b",
-                    }}
-                  >
-                    Assigned Tasks
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "26px",
-                      fontWeight: 800,
-                      color: "#0f172a",
-                    }}
-                  >
-                    {totalTasks}
-                  </div>
+                <div className="dashboard-stat-info">
+                  <div className="dashboard-stat-label">Assigned Tasks</div>
+                  <div className="dashboard-stat-value">{totalTasks}</div>
                 </div>
               </div>
             </Card>
 
-            <Card style={{ padding: "20px" }}>
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "16px" }}
-              >
+            <Card className="dashboard-stat-card">
+              <div className="dashboard-stat-inner">
                 <div
+                  className="dashboard-stat-icon"
                   style={{
-                    width: "48px",
-                    height: "48px",
-                    borderRadius: "12px",
                     backgroundColor: "#eff6ff",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
                     color: "#2563eb",
                   }}
                 >
                   <PlayCircle size={24} />
                 </div>
-                <div>
-                  <div
-                    style={{
-                      fontSize: "13px",
-                      fontWeight: 600,
-                      color: "#64748b",
-                    }}
-                  >
-                    In Progress
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "26px",
-                      fontWeight: 800,
-                      color: "#0f172a",
-                    }}
-                  >
-                    {inProgressTasks}
-                  </div>
+                <div className="dashboard-stat-info">
+                  <div className="dashboard-stat-label">In Progress</div>
+                  <div className="dashboard-stat-value">{inProgressTasks}</div>
                 </div>
               </div>
             </Card>
 
-            <Card style={{ padding: "20px" }}>
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "16px" }}
-              >
+            <Card className="dashboard-stat-card">
+              <div className="dashboard-stat-inner">
                 <div
+                  className="dashboard-stat-icon"
                   style={{
-                    width: "48px",
-                    height: "48px",
-                    borderRadius: "12px",
                     backgroundColor: "#ecfdf5",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
                     color: "#059669",
                   }}
                 >
                   <CheckCircle2 size={24} />
                 </div>
-                <div>
-                  <div
-                    style={{
-                      fontSize: "13px",
-                      fontWeight: 600,
-                      color: "#64748b",
-                    }}
-                  >
-                    Completed
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "26px",
-                      fontWeight: 800,
-                      color: "#0f172a",
-                    }}
-                  >
-                    {completedTasks}
-                  </div>
+                <div className="dashboard-stat-info">
+                  <div className="dashboard-stat-label">Completed</div>
+                  <div className="dashboard-stat-value">{completedTasks}</div>
                 </div>
               </div>
             </Card>
 
-            <Card style={{ padding: "20px" }}>
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "16px" }}
-              >
+            <Card className="dashboard-stat-card">
+              <div className="dashboard-stat-inner">
                 <div
+                  className="dashboard-stat-icon"
                   style={{
-                    width: "48px",
-                    height: "48px",
-                    borderRadius: "12px",
                     backgroundColor: "#fef3c7",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
                     color: "#d97706",
                   }}
                 >
                   <Folder size={24} />
                 </div>
-                <div>
-                  <div
-                    style={{
-                      fontSize: "13px",
-                      fontWeight: 600,
-                      color: "#64748b",
-                    }}
-                  >
-                    My Projects
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "26px",
-                      fontWeight: 800,
-                      color: "#0f172a",
-                    }}
-                  >
-                    {totalProjects}
-                  </div>
+                <div className="dashboard-stat-info">
+                  <div className="dashboard-stat-label">My Projects</div>
+                  <div className="dashboard-stat-value">{totalProjects}</div>
                 </div>
               </div>
             </Card>

@@ -2,17 +2,18 @@
    TaskFlow AppLayout - Responsive & All-Device Media Queries
    ========================================================================== */
 
-/* Main Page Container */
+/* Main Page Container - Locks viewport so sidebar never scrolls with page */
 .app-layout-container {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
+  max-height: 100vh;
   background-color: #f8fafc;
   width: 100%;
-  overflow-x: hidden;
+  overflow: hidden;
 }
 
 /* --------------------------------------------------------------------------
-   Sidebar - Desktop Sticky & Mobile Drawer
+   Sidebar - Desktop Fixed & Mobile Drawer
    -------------------------------------------------------------------------- */
 .app-sidebar {
   width: 260px;
@@ -22,9 +23,9 @@
   flex-direction: column;
   transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   z-index: 40;
-  position: sticky;
-  top: 0;
+  position: relative;
   height: 100vh;
+  max-height: 100vh;
   flex-shrink: 0;
   overflow: hidden;
 }
@@ -81,7 +82,20 @@
 }
 
 /* --------------------------------------------------------------------------
-   Header - Responsive Navbar & Dropdowns
+   Main Content Area Wrapper
+   -------------------------------------------------------------------------- */
+.app-main-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+}
+
+/* --------------------------------------------------------------------------
+   Header - Fixed Top Navbar & Dropdowns
    -------------------------------------------------------------------------- */
 .app-header {
   height: 70px;
@@ -91,8 +105,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 28px;
-  position: sticky;
-  top: 0;
+  flex-shrink: 0;
   z-index: 30;
   box-sizing: border-box;
   width: 100%;
@@ -248,7 +261,7 @@
 }
 
 /* --------------------------------------------------------------------------
-   Main Content Area
+   Main Content Area - Independent Scroll Container
    -------------------------------------------------------------------------- */
 .app-main-content {
   flex: 1;
@@ -256,11 +269,18 @@
   overflow-y: auto;
   box-sizing: border-box;
   width: 100%;
+  height: calc(100vh - 70px);
 }
 
 @media (max-width: 1023px) {
   .app-main-content {
     padding: 24px 20px;
+  }
+}
+
+@media (max-width: 768px) {
+  .app-main-content {
+    height: calc(100vh - 64px);
   }
 }
 

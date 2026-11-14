@@ -255,7 +255,7 @@ export const AppLayout: React.FC = () => {
       </aside>
 
       {/* Main Content Area */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+      <div className="app-main-wrapper">
         {/* Top Header */}
         <header className="app-header">
           {/* Left section: Toggle & Search */}
